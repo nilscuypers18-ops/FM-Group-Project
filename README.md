@@ -90,10 +90,11 @@ py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe -m unittest discover -s tests -v
 ```
 
-The app opens on a **T Capital** landing page. **Investor login** and **Investment
-Manager login** are one-click demo navigation without passwords or accounts.
-Investors see the base strategy; managers can change the MA length, core weight
-and costs in the sidebar. The Team page shows all six members and their student
+The app opens on a **T Capital** landing page. **Log in as investor** and **Log in
+as manager** are one-click demo navigation without passwords or accounts. After login,
+a side navigation shows Overview, Performance, Trade History and Team. Investors see
+the base strategy; managers can change the MA length, core weight and costs in the
+sidebar. The Team page shows all six members and their student
 IDs. Edit `TEAM` in `portal.py` to add local photo paths.
 
 **Trade History** shows the opening allocation and every monthly review: drifted
