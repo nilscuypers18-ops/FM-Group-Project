@@ -1,8 +1,8 @@
 # FM Group Project
 
 Python project for 2270 Financial Modeling. The notebook follows the course's
-sequence: assumptions → API data → four data checks → deliberate cleaning →
-signals and weights → lagged backtest → costs → performance and risk → verification.
+sequence: assumptions → API data and checks → signals and weights → lagged
+backtest with costs → performance measures → sensitivity → limitations.
 
 ## Investment rule
 
@@ -20,15 +20,13 @@ liquidation is not charged. All portfolios use the same conventions.
 
 Prices start in February 2006. **Backtest returns start in March 2007 and end
 in October 2026.** Thirteen prices are needed to estimate twelve monthly returns.
-The former January 2007 start used only ten returns; that exception was removed.
 The 60/40 SPY/AGG benchmark rebalances monthly; the same-assets buy-and-hold
 comparison trades once and lets weights drift.
 
 Data: Yahoo Finance API via `yfinance`, adjusted daily ETF closes converted to
 calendar month-end. Cash return is the preceding `^IRX` annual quoted yield
 divided by 100 and 12. This is an approximation, not an investable bill
-total-return index. No forward fill, silent deletion of months or zero-filled
-missing returns. Inspect the four checks and quote-date audit after every refresh.
+total-return index. A missing month stops the calculation instead of being filled.
 
 ## Planned: crisis stress test
 
@@ -50,73 +48,49 @@ losses.
 
 | File | Purpose |
 |---|---|
-| `strategy_backtest.ipynb` | Standalone Colab notebook, with visible calculations and course-style pandas/Matplotlib figures |
-| `app.py` | Self-contained strategy calculations and Streamlit controls; safe to import for tests |
-| `portal.py` | Demo investor/manager login, side navigation, overview, performance, trade history and team |
-| `assets/portal.css` | T Capital design and animations (theme in `.streamlit/config.toml`) |
-| `COURSE_ALIGNMENT.md` | Review of every input file, course mapping, methodological differences and submission checklist |
-| `tools/build_notebook.py` | Copies shared functions into the notebook; no GitHub download at notebook run time |
-| `tests/test_strategy.py` | Small hand-checkable financial logic, data quality and notebook consistency checks |
-| `tools/run_notebook.py` | Executes analysis in a fresh local Jupyter kernel with live API data |
-| `requirements.txt` | Notebook/app packages |
-| `requirements-dev.txt` | Additional packages for automated notebook execution |
-| `inputs/course/` | Unchanged course reference materials |
-| `2270_FM_group_assignment_v2 (1).pdf` | Assignment specification |
+| `strategy_backtest.ipynb` | **The master copy.** Submitted notebook; runs on its own in Google Colab |
+| `app.py` | Streamlit entry point. Loads the strategy functions straight from the notebook |
+| `portal.py`, `assets/portal.css`, `.streamlit/config.toml` | App pages and styling (T Capital portal), including Trade History |
+| `activity.py` | Trade History logic: monthly rebalance log, per-asset trade explanations, illustrative USD values |
+| `crisis_analysis.ipynb` | Crisis stress test (2008, Covid, 2022) on the same backtest, imported from `app.py` |
+| `tests/` | Small checks of timing, costs, weights and metrics, the app pages, and `test_activity.py` (trade history reconciles with the backtest) |
+| `COURSE_ALIGNMENT.md` | How the code maps to the course notebooks |
+| `requirements.txt` | Python packages for notebook and app |
+| `inputs/course/` | Unchanged course notebooks and slides |
 
-The notebook shows raw data checks, source dates, descriptive returns/correlations,
-price/SMA/position panels, lagged holdings, cumulative wealth starting at one,
-gross/net costs, required metrics, positive drawdowns, rolling 60-month metrics,
-calendar-year returns and selected crisis episodes. SMA/cost/delay sensitivities
-challenge the fixed base rule; they do not select a winning parameter or constitute
-an unseen validation sample.
+## How the notebook and the app stay in sync
 
-Generated CSVs, figures, an executed notebook and provenance are under `output/`
-and are ignored by Git. These are outputs, not input data required for submission.
+Write all strategy code **in the notebook only**. Every code cell that starts with
+`# STRATEGY FUNCTIONS` is read and executed by `app.py` when the app starts, so the
+app automatically uses the latest notebook code. Keep those cells free of plots and
+`display()`; put analysis and charts in normal cells.
 
 ## Run in Google Colab
 
 Open `strategy_backtest.ipynb` in a fresh Colab session and select **Runtime → Run all**.
-The setup cell installs the analysis packages. All calculation code is contained
-inside the notebook. No repository checkout or separate Python/data file is needed.
-Internet access and working Yahoo API coverage are required. API/data failures stop
-the analysis; inspect them instead of replacing observations with fabricated data.
+Internet access for the Yahoo Finance API is required; no other files are needed.
 
 ## Run locally
-
-Use Python 3.12. From this repository folder:
 
 ```powershell
 py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 .\.venv\Scripts\python.exe -m streamlit run app.py
-```
-
-Select `.venv` as the notebook kernel. To edit shared calculations, update
-`app.py` and regenerate the notebook. Edit notebook narrative/figures in
-`tools/build_notebook.py`, since regeneration replaces the notebook's contents.
-
-The app opens on a **T Capital** landing page (working brand for Group T) with
-two one-click demo logins: **investor** and **investment manager**. There are no
-credentials or accounts; the role lives only in the Streamlit session. After login,
-a side navigation shows Overview, Performance, Trade History and Team. Managers also
-get sliders for the moving average, core weight and costs. **Log out** returns to the
-landing page. Trade History lists the model's trades (first purchase and every trend
-switch) from the backtest; small monthly rebalancing trades are only in turnover.
-
-Edit `TEAM` in `portal.py` to add student IDs and local photo paths
-(for example `assets/team/nils.jpg`). Initials appear until photos are supplied.
-Design: `assets/portal.css` and `.streamlit/config.toml`.
-
-```powershell
-.\.venv\Scripts\python.exe tools/build_notebook.py
 .\.venv\Scripts\python.exe -m unittest discover -s tests -v
-.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
-.\.venv\Scripts\python.exe tools/run_notebook.py
 ```
 
-The last command skips only the installation cell, because packages are already
-installed, and executes every analysis cell in a fresh local kernel. It is a local
-reproduction check, not a claim that Google Colab itself was tested.
+The app opens on a **T Capital** landing page. **Log in as investor** and **Log in
+as manager** are one-click demo navigation without passwords or accounts. After login,
+a side navigation shows Overview, Performance, Trade History and Team. Investors see
+the base strategy; managers can change the MA length, core weight and costs in the
+sidebar. Edit `TEAM` in `portal.py` to add student IDs and photos.
+
+**Trade History** shows the opening allocation and every monthly review: drifted
+holdings before the trade, new targets, buys/sells, costs, trend inputs and a short
+explanation per asset, with CSV export. Dollar amounts illustrate an initial
+investment (USD 100,000 by default); they are model notionals, not broker orders.
+The backtest records pretrade weights and trade sizes for this page; this does not
+change any returns.
 
 ## Submission work still owned by the group
 
@@ -129,7 +103,7 @@ asserted here.
 
 For optional app marks, deploy `app.py` on Streamlit Community Cloud and put both
 the accessible app URL and GitHub URL in notebook and prospectus. Source code alone
-does not meet that requirement. Deployment has not been performed by this refactor.
+does not meet that requirement.
 Submit only the prospectus PDF and notebook, under 50 MB combined.
 
 ## Working together with GitHub Desktop

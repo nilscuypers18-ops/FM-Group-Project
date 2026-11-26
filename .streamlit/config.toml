@@ -12,6 +12,7 @@ redColor = "#E5484D"
 font = "Geist:https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600&display=swap"
 codeFont = "Geist Mono:https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500&display=swap"
 metricValueFontWeight = 400
+metricValueFontSize = "1.8rem"
 
 [theme.sidebar]
 backgroundColor = "#FFFFFF"

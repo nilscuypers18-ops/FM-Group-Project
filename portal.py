@@ -1,6 +1,7 @@
 """Presentation layer for the T Capital portal (Streamlit).
 
-Calculations come from app.py. Edit TEAM below to add photos or student IDs.
+Calculations come from app.py (strategy cells of the notebook); trade history
+logic lives in activity.py. Edit TEAM below to add photos or student IDs.
 The two logins are one-click demo roles, not authentication.
 """
 import base64
@@ -11,6 +12,8 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from matplotlib.ticker import PercentFormatter
 import streamlit as st
+
+from activity import rebalance_history
 
 
 TEAM = [
@@ -94,6 +97,7 @@ def landing():
 
 # --- shell --------------------------------------------------------------------
 def shell(m, role):
+    """Sidebar: brand, navigation, manager assumptions, log out."""
     params = {"ma": m.MA_MONTHS, "core": m.CORE_WEIGHT, "cost": m.COST_BPS}
     with st.sidebar:
         brand()
@@ -116,29 +120,27 @@ def shell(m, role):
 # --- data ---------------------------------------------------------------------
 @st.cache_data(ttl=24 * 3600, show_spinner=False)
 def load_data(_model):
-    raw = _model.download_raw(_model.DOWNLOAD_START, _model.BACKTEST_END)
-    prices, rf, audit = _model.prepare_data(raw, _model.DOWNLOAD_START, _model.BACKTEST_END)
-    return raw, prices, rf, audit
+    return _model.download_data(_model.DOWNLOAD_START, _model.BACKTEST_END)
 
 
 def backtest(m, params):
-    """Returns (raw, prices, rf, audit, results, rf_bt, res_strat) or None after showing the error."""
+    """(prices, rf, results, rf_bt, detail) for the scenario, or None after showing the error."""
     try:
         with st.spinner("Loading market data…"):
-            raw, prices, rf, audit = load_data(m)
-            results, rf_bt, _, res_strat = m.run_all(prices, rf, params["core"], params["ma"],
-                                                     params["cost"])
+            prices, rf = load_data(m)
+            results, rf_bt, _, detail = m.run_all(prices, rf, params["core"], params["ma"],
+                                                  params["cost"])
     except (ValueError, KeyError, OSError) as exc:
         st.error(f"Data or calculation check failed: {exc}")
         if st.button("Retry"):
             load_data.clear()
             st.rerun()
         return None
-    return raw, prices, rf, audit, results, rf_bt, res_strat
+    return prices, rf, results, rf_bt, detail
 
 
-def holdings(res_strat):
-    return res_strat.filter(like="weight_").rename(columns=lambda c: c.removeprefix("weight_"))
+def holdings(detail):
+    return detail.filter(like="weight_").rename(columns=lambda c: c.removeprefix("weight_"))
 
 
 def line_chart(data, ylabel, percent=False, colors=None, invert=False):
@@ -163,13 +165,13 @@ def line_chart(data, ylabel, percent=False, colors=None, invert=False):
         plt.close(fig)
 
 
-# --- pages --------------------------------------------------------------------
+# --- overview -----------------------------------------------------------------
 def overview(m, params):
     heading("Portfolio overview", "Your portfolio,", "at a glance.")
     data = backtest(m, params)
     if data is None:
         return
-    _, _, _, _, results, rf_bt, res_strat = data
+    _, _, results, rf_bt, detail = data
     table = m.performance_table(results, rf_bt)
     s, b = table.loc["Strategy"], table.loc[m.BENCHMARK]
     c1, c2, c3 = st.columns(3)
@@ -184,11 +186,11 @@ def overview(m, params):
              ' · net of costs</div>')
         line_chart(m.cumulative(results), "Value of USD 1")
 
-    positions = holdings(res_strat)
-    latest = positions.iloc[-1]
+    positions = holdings(detail)
     left, right = st.columns([1.1, 1], gap="medium")
     with left, st.container(key="panel_holdings"):
-        html(f'<div class="mono">Holdings · {positions.index[-1]:%B %Y}</div>{allocation_rows(latest)}')
+        html(f'<div class="mono">Holdings · {positions.index[-1]:%B %Y}</div>'
+             f'{allocation_rows(positions.iloc[-1])}')
     with right:
         cards([("01", f"{params['core']:.0%} bond core", "AGG, held at a fixed weight."),
                ("02", f"{params['ma']}-month trend filter",
@@ -214,12 +216,13 @@ def allocation_rows(latest):
     return f'<div class="rows">{"".join(rows)}</div>'
 
 
-def performance(m, params, role):
+# --- performance --------------------------------------------------------------
+def performance(m, params):
     heading("Performance", "The evidence,", "net of costs.")
     data = backtest(m, params)
     if data is None:
         return
-    raw, prices, _, audit, results, rf_bt, res_strat = data
+    prices, _, results, rf_bt, detail = data
     table = m.performance_table(results, rf_bt)
     pct = ["Ann. return", "CAGR", "Volatility", "Alpha (ann.)", "Tracking error", "Max drawdown"]
     shown = table.T.astype(object)
@@ -227,7 +230,7 @@ def performance(m, params, role):
         fmt = "{:.2%}" if row in pct else "{:.2f}"
         shown.loc[row] = ["–" if pd.isna(v) else fmt.format(v) for v in table[row]]
     with st.container(key="panel_measures"):
-        html('<div class="mono">Performance measures · Mar 2007 – Oct 2026</div>')
+        html(f'<div class="mono">Performance measures · {results.index[0]:%b %Y} – {results.index[-1]:%b %Y}</div>')
         st.dataframe(shown.rename_axis("Measure"), width="stretch")
         st.caption("Volatility = √12 × std. Sharpe uses excess returns over T-bills. Alpha and beta vs "
                    "60/40 on excess returns; beta not annualised. Drawdown shown as a positive loss.")
@@ -236,7 +239,7 @@ def performance(m, params, role):
         line_chart(m.drawdowns(results), "Loss from peak", percent=True, invert=True)
     with st.container(key="panel_allocation"):
         html('<div class="mono">Allocation history</div>')
-        positions = holdings(res_strat)
+        positions = holdings(detail)
         fig, ax = plt.subplots(figsize=(11, 3.6))
         positions.plot.area(ax=ax, ylim=(0, 1), linewidth=0,
                             color=[ASSETS[c][2] for c in positions.columns])
@@ -249,73 +252,128 @@ def performance(m, params, role):
         plt.close(fig)
     with st.container(key="panel_costs"):
         html('<div class="mono">Before and after transaction costs</div>')
-        gross_net = res_strat[["gross", "net"]].rename(columns={"gross": "Strategy gross",
-                                                                 "net": "Strategy"})
+        gross_net = detail[["gross", "net"]].rename(columns={"gross": "Strategy gross", "net": "Strategy"})
         line_chart(m.cumulative(gross_net), "Value of USD 1", colors=["#A1A1AA", ACCENT])
-        st.caption(f"Average monthly turnover after the first purchase: "
-                   f"{res_strat['turnover'].iloc[1:].mean():.2%}.")
-
-    if role == "Investment Manager":
-        with st.expander("Rolling 60-month measures"):
-            for metric, values in m.rolling_performance(results, rf_bt).items():
-                st.markdown(f"**{metric}**")
-                line_chart(values, metric, metric == "Alpha (ann.)")
-        with st.expander("Data and method"):
-            st.write(f"Daily rows: {raw.shape[0]} · monthly prices: {len(prices)} · "
-                     f"backtest months: {len(results)}")
-            st.dataframe(m.data_summary(raw), width="stretch")
-            st.dataframe(audit.tail(), width="stretch")
-            st.caption("Yahoo Finance adjusted closes, converted to month-end. Cash = previous ^IRX "
-                       "yield / 100 / 12 (approximation). Signal-close execution is optimistic. Taxes "
-                       "and market impact are not modelled.")
+        st.caption(f"Average monthly turnover after the first purchase: {detail['turnover'].iloc[1:].mean():.2%}.")
+    with st.expander("Data and method"):
+        st.write(f"Monthly prices: {len(prices)} ({prices.index[0]:%b %Y} – {prices.index[-1]:%b %Y}) · "
+                 f"backtest months: {len(results)}")
+        st.caption("Yahoo Finance adjusted closes, converted to month-end. Cash = previous ^IRX yield / 100 / 12 "
+                   "(approximation). Signal-close execution is optimistic. Taxes and market impact are not modelled.")
     st.download_button("Download monthly returns", results.to_csv().encode("utf-8"),
                        file_name="monthly_net_returns.csv", mime="text/csv")
 
 
-def trade_log(res_strat):
-    """Model trades: first purchase, then every month a satellite asset's trend switches."""
-    positions = holdings(res_strat)
-    rows = []
-    first = positions.index[0]
-    for asset in positions.columns:
-        if positions.loc[first, asset] > 0:
-            rows.append((first, asset, "Buy", "Initial investment", 100 * positions.loc[first, asset]))
-    for asset in ["SPY", "GLD", "DBC"]:
-        held = positions[asset] > 0
-        switched = held != held.shift(1)
-        for month in positions.index[switched][1:]:
-            if held[month]:
-                rows.append((month, asset, "Buy", "Trend turned up", 100 * positions.loc[month, asset]))
-            else:
-                rows.append((month, asset, "Sell", "Trend turned down → T-bills", 0.0))
-    log = pd.DataFrame(rows, columns=["Month", "Asset", "Action", "Reason", "Weight after"])
-    return log.sort_values("Month", ascending=False, kind="stable").reset_index(drop=True)
+# --- trade history (logic in activity.py) ---------------------------------------
+def activity_table(data, columns, formats=None):
+    """Readable labels for display; values stay numeric for export."""
+    view = data[list(columns)].rename(columns=columns)
+    formatting = {columns[k]: v for k, v in (formats or {}).items() if k in columns}
+    st.dataframe(view.style.format(formatting, na_rep="—"), hide_index=True, width="stretch")
 
 
 def trade_page(m, params):
-    heading("Trade history", "Every switch,", "month by month.")
+    heading("Trade history", "Every rebalance,", "month by month.")
+    ma_months, core_weight, cost_bps = params["ma"], params["core"], params["cost"]
+    st.caption(f"Model trades, not broker orders · {core_weight:.0%} AGG core · {ma_months}-month trend · "
+               f"{cost_bps} bps costs · signal at month-end, return in the following month.")
     data = backtest(m, params)
     if data is None:
         return
-    res_strat = data[-1]
-    log = trade_log(res_strat)
-    switches = log[log["Reason"] != "Initial investment"]
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Trend switches", f"{len(switches)}")
-    c2.metric("Per year", f"{len(switches) / (len(res_strat) / 12):.1f}")
-    c3.metric("Avg. monthly turnover", f"{res_strat['turnover'].iloc[1:].mean():.1%}")
-    with st.container(key="panel_trades"):
-        assets = st.pills("Asset", ["SPY", "GLD", "DBC"], selection_mode="multi",
-                          default=["SPY", "GLD", "DBC"], key="trade_assets")
-        shown = log[log["Asset"].isin(list(assets or []) + ["AGG", "TBILL"])]
-        st.dataframe(shown, hide_index=True, width="stretch", height=420, column_config={
-            "Month": st.column_config.DateColumn(format="MMM YYYY"),
-            "Weight after": st.column_config.NumberColumn(format="%.1f%%"),
-        })
-        st.caption("Model trades, placed at the previous month-end close. Small monthly rebalancing "
-                   "trades back to target weights are not listed; they are included in turnover and costs.")
+    prices, _, _, _, detail = data
+
+    left, right = st.columns([1, 2])
+    capital = left.number_input("Initial investment (USD)", min_value=1_000.0,
+                                max_value=1_000_000_000_000.0, value=100_000.0,
+                                step=10_000.0, key="history_capital")
+    months, decisions = rebalance_history(m, prices, detail, ma_months, capital)
+    first, last = months.signal_date.iloc[0].date(), months.signal_date.iloc[-1].date()
+    dates = right.date_input("Signal dates", value=(first, last), min_value=first,
+                             max_value=last, key="history_dates")
+    if len(dates) != 2:
+        st.info("Choose both a start and an end date.")
+        return
+    start, end = map(pd.Timestamp, dates)
+    selected = months.loc[months.signal_date.between(start, end)]
+    records = decisions.loc[decisions.signal_date.between(start, end)]
+    if selected.empty:
+        st.info("No monthly signal dates fall in this range.")
+        return
+    trades = records.loc[records.action != "Hold"]
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Rebalances", str(int((selected.event == "Rebalance").sum())))
+    c2.metric("Asset trades", f"{len(trades):,}")
+    c3.metric("Traded notional · USD", f"${selected.traded_usd.sum():,.2f}")
+    c4.metric("Model costs · USD", f"${selected.cost_usd.sum():,.2f}")
+
+    st.subheader("Monthly rebalance log")
+    date_formats = {"signal_date": "{:%d %b %Y}", "return_month": "{:%b %Y}"}
+    money_formats = {c: "${:,.2f}" for c in ("traded_usd", "cost_usd", "opening_value", "closing_value", "trade_usd")}
+    activity_table(selected.sort_values("signal_date", ascending=False), {
+        "signal_date": "Signal date", "return_month": "Return month", "event": "Activity",
+        "assets_traded": "Assets traded", "turnover": "Turnover", "traded_usd": "Traded · USD",
+        "cost_usd": "Costs · USD", "net_return": "Month net return", "closing_value": "Month-end value · USD",
+    }, date_formats | money_formats | {"turnover": "{:.2%}", "net_return": "{:+.2%}"})
+
+    st.subheader("Inside a rebalance")
+    options = selected.signal_date.sort_values(ascending=False).tolist()
+    if st.session_state.get("history_month") not in options:
+        st.session_state.history_month = options[0]
+    chosen = st.selectbox("Signal date", options,
+                          format_func=lambda d: f"{d:%d %b %Y} → {(d + pd.offsets.MonthEnd(1)):%b %Y} return",
+                          key="history_month")
+    event = selected.loc[selected.signal_date == chosen].iloc[0]
+    allocation = records.loc[records.signal_date == chosen].copy()
+    with st.container(key="panel_rebalance"):
+        st.write(f"**{event.event}** · bought {event.buys:.2%}, sold {event.sells:.2%} of the portfolio · "
+                 f"cost ${event.cost_usd:,.2f} · {event.return_month:%B %Y} return {event.net_return:+.2%} after costs.")
+        activity_table(allocation, {
+            "asset": "Asset", "action": "Action", "previous_target": "Previous target",
+            "pretrade_weight": "Before trade · drifted", "target_weight": "After trade · target",
+            "trade_pp": "Trade · pp", "trade_usd": "Signed trade · USD", "cost_usd": "Cost · USD",
+        }, money_formats | {c: "{:.2%}" for c in ("previous_target", "pretrade_weight", "target_weight")}
+           | {"trade_pp": "{:+.3f}"})
+        activity_table(allocation, {"asset": "Asset", "status": "Rule status", "reason": "Why"})
+    with st.expander("Signal inputs"):
+        satellites = allocation.loc[allocation.asset.isin(m.SATELLITE)]
+        activity_table(satellites, {
+            "asset": "Asset", "adjusted_close": "Adjusted close · USD",
+            "moving_average": f"{ma_months}-month SMA · USD", "annual_volatility": "12-month volatility",
+            "satellite_budget": "Share before trend filter", "status": "Trend status",
+        }, {"adjusted_close": "{:,.2f}", "moving_average": "{:,.2f}",
+            "annual_volatility": "{:.2%}", "satellite_budget": "{:.2%}"})
+        activity_table(allocation, {
+            "asset": "Asset", "target_change_pp": "Target change · pp",
+            "drift_correction_pp": "Drift correction · pp", "trade_pp": "Total trade · pp",
+        }, {c: "{:+.3f}" for c in ("target_change_pp", "drift_correction_pp", "trade_pp")})
+        st.caption("Trade = target change + drift correction, in percentage points of portfolio value.")
+
+    st.subheader("Trade ledger")
+    left, right = st.columns(2)
+    assets = left.multiselect("Assets", allocation.asset.tolist(), default=allocation.asset.tolist(),
+                              key="history_assets")
+    actions = right.multiselect("Actions", ["Buy", "Sell", "Hold"], default=["Buy", "Sell"],
+                                key="history_actions")
+    ledger = records.loc[records.asset.isin(assets) & records.action.isin(actions)].sort_values(
+        ["signal_date", "asset"], ascending=[False, True])
+    if ledger.empty:
+        st.info("No records match these filters.")
+    else:
+        activity_table(ledger, {
+            "signal_date": "Signal date", "return_month": "Return month", "asset": "Asset", "action": "Action",
+            "pretrade_weight": "Before trade", "target_weight": "Target", "trade_pp": "Trade · pp",
+            "trade_usd": "Signed trade · USD", "cost_usd": "Cost · USD", "reason": "Reason",
+        }, date_formats | money_formats | {"pretrade_weight": "{:.2%}", "target_weight": "{:.2%}", "trade_pp": "{:+.3f}"})
+    left, right = st.columns(2)
+    left.download_button("Download trade ledger", ledger.to_csv(index=False).encode("utf-8"),
+                         file_name="rebalance_decisions.csv", mime="text/csv", key="download_history_trades")
+    right.download_button("Download monthly log", selected.to_csv(index=False).encode("utf-8"),
+                          file_name="monthly_rebalances.csv", mime="text/csv", key="download_history_months")
+    st.caption("USD amounts are illustrative notionals, not ETF share counts. TBILL is a cash-return proxy, "
+               "not a traded security.")
 
 
+# --- team -----------------------------------------------------------------------
 def team_page():
     heading("Team", "Six people,", "one portfolio.")
     body = []
@@ -327,7 +385,6 @@ def team_page():
             photo = f'<img src="{src}" class="avatar" style="object-fit:cover">'
         else:
             photo = f'<div class="avatar {"alt" if i % 2 else ""}">{escape(person["initials"])}</div>'
-
         body.append(f'<div class="card">{photo}<h4 style="margin-top:1rem">{escape(person["name"])}</h4>'
                     f'<div class="mono">Project team</div>{sid}</div>')
     html(f'<div class="grid" style="--cols:3">{"".join(body)}</div>')
@@ -345,7 +402,7 @@ def render_app(model):
     if page == "Overview":
         overview(model, params)
     elif page == "Performance":
-        performance(model, params, role)
+        performance(model, params)
     elif page == "Trade History":
         trade_page(model, params)
     else:
