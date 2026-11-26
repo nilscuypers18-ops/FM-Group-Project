@@ -141,7 +141,7 @@ def trade_page(m, parameters):
             "A signal at month-end is assumed to trade at that close and earns the following month's return.")
     try:
         with st.spinner("Reconstructing the rebalance history…"):
-            _, prices, rf, audit = load_data(m)
+            prices, rf = load_data(m)
             _, _, _, detail = m.run_all(prices, rf, core_weight, ma_months, cost_bps)
     except (ValueError, KeyError, OSError) as exc:
         data_error(exc)
@@ -222,12 +222,11 @@ def trade_page(m, parameters):
 
     with st.expander("Signal evidence and trade decomposition"):
         satellites = allocation.loc[allocation.asset.isin(m.SATELLITE)].copy()
-        satellites["quote_date"] = [audit.loc[chosen, f"{asset} source date"] for asset in satellites.asset]
         activity_table(satellites, {
-            "asset": "Asset", "quote_date": "Source quote date", "adjusted_close": "Adjusted close · USD",
+            "asset": "Asset", "adjusted_close": "Adjusted close · USD",
             "moving_average": f"{ma_months}-month SMA · USD", "annual_volatility": "12-month annual volatility",
             "satellite_budget": "Share of portfolio before trend filter", "status": "Trend status",
-        }, {"quote_date": "{:%d %b %Y}", "adjusted_close": "{:,.2f}", "moving_average": "{:,.2f}",
+        }, {"adjusted_close": "{:,.2f}", "moving_average": "{:,.2f}",
             "annual_volatility": "{:.2%}", "satellite_budget": "{:.2%}"})
         st.caption("Only prices strictly above the moving average turn a satellite on. Its inverse-volatility "
                    "share goes to the cash proxy when off; other active assets do not absorb it. "
@@ -272,9 +271,7 @@ def trade_page(m, parameters):
 
 @st.cache_data(ttl=24 * 3600, show_spinner=False)
 def load_data(_model):
-    raw = _model.download_raw(_model.DOWNLOAD_START, _model.BACKTEST_END)
-    prices, rf, audit = _model.prepare_data(raw, _model.DOWNLOAD_START, _model.BACKTEST_END)
-    return raw, prices, rf, audit
+    return _model.download_data(_model.DOWNLOAD_START, _model.BACKTEST_END)
 
 
 def line_chart(data, ylabel, percent=False):
@@ -308,7 +305,7 @@ def strategy_parameters(m, role):
             ma_months = st.slider("Moving-average length (months)", 3, 12, m.MA_MONTHS, key="manager_ma")
             core_weight = st.slider("Core weight in AGG", 0.0, 1.0, m.CORE_WEIGHT, .05, key="manager_core")
             cost_bps = st.slider("Transaction cost (bps per unit turnover)", 0, 50, m.COST_BPS, key="manager_cost")
-            st.caption("Volatility: 12 complete monthly returns. Benchmark: 60% SPY / 40% AGG.")
+            st.caption("Volatility: 12 monthly returns. Benchmark: 60% SPY / 40% AGG.")
             if (ma_months, core_weight, cost_bps) != (m.MA_MONTHS, m.CORE_WEIGHT, m.COST_BPS):
                 st.info("Scenario analysis · parameters differ from the base strategy.")
     return ma_months, core_weight, cost_bps
@@ -330,7 +327,7 @@ def overview(m, parameters):
          f'<b>Mar 2007 – Oct 2026</b><span>Monthly · USD · Net of costs</span></div>')
     try:
         with st.spinner("Preparing your portfolio overview…"):
-            raw, prices, rf, audit = load_data(m)
+            prices, rf = load_data(m)
             results, rf_bt, weights, res_strat = m.run_all(prices, rf, core_weight, ma_months, cost_bps)
     except (ValueError, KeyError, OSError) as exc:
         data_error(exc)
@@ -390,19 +387,10 @@ def overview(m, parameters):
             st.caption("Turnover counts buys plus sells relative to drifted holdings, including proxy-cash trades. "
                        "Opening turnover is one. Net return = gross return − turnover × cost rate. "
                        "Buy & hold trades only at inception; 60/40 rebalances monthly. No final liquidation charge.")
-    details = st.expander("Rolling risk measures · 60 months", key="details_rolling", on_change="rerun")
-    if details.open:
-        with details:
-            for metric, values in m.rolling_performance(results, rf_bt).items():
-                st.subheader(metric)
-                line_chart(values, metric, metric == "Alpha (ann.)")
     with st.expander("Data sources and methodology"):
-        st.write(f"Raw daily data: {raw.shape[0]} rows; monthly prices: {len(prices)} rows; "
+        st.write(f"Monthly prices: {len(prices)} rows ({prices.index[0]:%b %Y} – {prices.index[-1]:%b %Y}); "
                  f"backtest: {len(results)} months.")
-        st.dataframe(m.data_summary(raw), width="stretch")
-        st.dataframe(audit.tail(), width="stretch")
-        st.caption("Yahoo Finance adjusted ETF closes, daily to calendar month-end; no forward fill or dropped months. "
-                   "Source quotes older than seven calendar days cause an error. Check recorded quote dates. "
+        st.caption("Yahoo Finance adjusted ETF closes, daily to calendar month-end; missing months stop the calculation. "
                    "Cash return = preceding ^IRX annual quoted yield / 100 / 12: an approximation, "
                    "not an investable T-bill total-return index.")
         st.caption("Signal-close execution is optimistic; a shift avoids crediting the signal month's return, "
