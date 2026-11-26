@@ -73,7 +73,9 @@ class AppChecks(unittest.TestCase):
             self.assertTrue(any("Nils Andreas Cuypers" in item.value for item in app.get("html")))
             app.radio(key="portal_page").set_value("Trade History").run(timeout=60)
             self.assertEqual(len(app.exception), 0)
-            self.assertTrue(any("no trade records" in item.value for item in app.get("html")))
+            self.assertEqual(app.sidebar.slider[1].value, .8)
+            self.assertTrue(any("Monthly rebalance log" in item.value for item in app.subheader))
+            self.assertGreater(len(app.dataframe), 4)
             app.button[0].click().run(timeout=60)
             app.button(key="enter_investor").click().run(timeout=60)
             self.assertEqual(len(app.exception), 0)
@@ -91,11 +93,55 @@ class AppChecks(unittest.TestCase):
             app.button(key="enter_investor").click().run(timeout=60)
             self.assertIn("Offline", app.error[0].value)
             calls = download.call_count
-            for page in ("Team Overview", "Trade History"):
-                app.radio(key="portal_page").set_value(page).run(timeout=60)
-                self.assertEqual(len(app.exception), 0)
-                self.assertEqual(len(app.error), 0)
+            app.radio(key="portal_page").set_value("Team Overview").run(timeout=60)
+            self.assertEqual(len(app.exception), 0)
+            self.assertEqual(len(app.error), 0)
             self.assertEqual(download.call_count, calls)
+            app.radio(key="portal_page").set_value("Trade History").run(timeout=60)
+            self.assertEqual(len(app.exception), 0)
+            self.assertIn("Offline", app.error[0].value)
+            self.assertEqual(len(app.dataframe), 0)
+
+    def test_trade_history_filters_details_and_manager_scenario(self):
+        import streamlit as st
+        st.cache_data.clear()
+        dates = pd.bdate_range(sg.DOWNLOAD_START, sg.BACKTEST_END)
+        rng = np.random.default_rng(2270)
+        raw = pd.DataFrame(100 * np.cumprod(1 + rng.normal(.0002, .008, (len(dates), 4)), axis=0),
+                           index=dates, columns=sg.ASSETS)
+        raw[sg.RF_TICKER] = 3.0
+        with patch("yfinance.download", return_value=pd.concat({"Close": raw}, axis=1)):
+            app = AppTest.from_file(str(Path(__file__).resolve().parents[1] / "app.py"))
+            app.run(timeout=60)
+            app.button(key="enter_manager").click().run(timeout=60)
+            app.radio(key="portal_page").set_value("Trade History").run(timeout=60)
+            self.assertEqual(len(app.exception), 0)
+            self.assertEqual(len(app.dataframe[0].value), 236)
+            app.sidebar.slider[1].set_value(1.).run(timeout=60)
+            self.assertEqual(len(app.exception), 0)
+            self.assertTrue(any("100% AGG core" in item.value for item in app.caption))
+            self.assertEqual(app.metric[0].value, "0")
+            self.assertEqual(app.metric[1].value, "1")
+            # Latest month has no trades, but the review and holdings remain visible.
+            self.assertEqual(app.dataframe[0].value.iloc[0]["Activity"], "No trades")
+            app.multiselect(key="history_assets").set_value(["SPY"]).run(timeout=60)
+            self.assertTrue(any("No records match" in item.value for item in app.info))
+            app.multiselect(key="history_actions").set_value(["Hold"]).run(timeout=60)
+            self.assertEqual(len(app.exception), 0)
+            self.assertEqual(len(app.dataframe[-1].value), 236)
+            app.number_input(key="history_capital").set_value(200_000.).run(timeout=60)
+            self.assertEqual(app.metric[2].value, "$200,000.00")
+            app.date_input(key="history_dates").set_value((pd.Timestamp("2007-02-28").date(),
+                                                           pd.Timestamp("2007-02-28").date())).run(timeout=60)
+            self.assertEqual(len(app.exception), 0)
+            self.assertEqual(len(app.dataframe[0].value), 1)
+            self.assertEqual(app.dataframe[1].value.loc[0, "Before trade · drifted"], 0)
+            app.date_input(key="history_dates").set_value((pd.Timestamp("2007-03-01").date(),
+                                                           pd.Timestamp("2007-03-02").date())).run(timeout=60)
+            self.assertEqual(len(app.exception), 0)
+            self.assertTrue(any("No monthly signal dates" in item.value for item in app.info))
+            app.radio(key="portal_page").set_value("Overview").run(timeout=60)
+            self.assertEqual(app.sidebar.slider[1].value, 1.)
 
 
 if __name__ == "__main__":

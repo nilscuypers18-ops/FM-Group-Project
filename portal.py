@@ -8,7 +8,10 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 from matplotlib.ticker import PercentFormatter
+import pandas as pd
 import streamlit as st
+
+from activity import rebalance_history
 
 
 TEAM = [
@@ -121,16 +124,149 @@ def team_page():
                            else "Student ID · to be added")
 
 
-def trade_page():
-    page_heading("PORTFOLIO ACTIVITY", "Trade history", "A dedicated home for past portfolio transactions.")
+def activity_table(data, columns, formats=None):
+    """Give audit fields readable labels while keeping exported values numeric."""
+    view = data[list(columns)].rename(columns=columns)
+    formatting = {columns[k]: v for k, v in (formats or {}).items() if k in columns}
+    st.dataframe(view.style.format(formatting, na_rep="—"), hide_index=True, width="stretch")
+
+
+def trade_page(m, parameters):
+    page_heading("PORTFOLIO ACTIVITY", "Trade history",
+                 "Follow every monthly rebalance: what changed, why it changed and what it cost.")
+    ma_months, core_weight, cost_bps = parameters
+    st.caption(f"SIMULATED ACTIVITY · {core_weight:.0%} AGG core · {ma_months}-month trend · "
+               f"12-month inverse volatility · {cost_bps} bps costs. Uses the same scenario as Overview.")
+    st.info("These are historical model decisions, not executed broker orders. "
+            "A signal at month-end is assumed to trade at that close and earns the following month's return.")
+    try:
+        with st.spinner("Reconstructing the rebalance history…"):
+            prices, rf = load_data(m)
+            _, _, _, detail = m.run_all(prices, rf, core_weight, ma_months, cost_bps)
+    except (ValueError, KeyError, OSError) as exc:
+        data_error(exc)
+        return
+
+    left, right = st.columns([1, 2], gap="large")
+    with left:
+        capital = st.number_input("Illustrative initial investment (USD)", min_value=1_000.0,
+                                  max_value=1_000_000_000_000.0, value=100_000.0,
+                                  step=10_000.0, key="history_capital")
+    months, decisions = rebalance_history(m, prices, detail, ma_months, capital)
+    first, last = months.signal_date.iloc[0].date(), months.signal_date.iloc[-1].date()
+    with right:
+        dates = st.date_input("Signal-date range", value=(first, last), min_value=first,
+                              max_value=last, key="history_dates")
+    st.caption("The initial investment starts at the opening allocation. Dollar values compound through the full "
+               "backtest, even when you filter dates. Trade amounts use portfolio value before that month's return.")
+    if len(dates) != 2:
+        st.info("Choose both a start and an end date to view activity.")
+        return
+    start, end = map(pd.Timestamp, dates)
+    selected = months.loc[months.signal_date.between(start, end)]
+    records = decisions.loc[decisions.signal_date.between(start, end)]
+    if selected.empty:
+        st.info("No monthly signal dates fall in this range. Choose a range that includes a month-end.")
+        return
+    trades = records.loc[records.action != "Hold"]
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Rebalances", str(int((selected.event == "Rebalance").sum())))
+    c2.metric("Asset trades", f"{len(trades):,}")
+    c3.metric("Traded notional · USD", f"${selected.traded_usd.sum():,.2f}")
+    c4.metric("Model costs · USD", f"${selected.cost_usd.sum():,.2f}")
+    st.caption(f"{len(selected)} monthly reviews · {int((selected.event == 'Opening allocation').sum())} opening "
+               f"allocation · {int((selected.event == 'No trades').sum())} reviews without trades. "
+               "Totals cover all assets in the date range. Notional and turnover count buys plus sells, including the cash proxy.")
+
+    st.subheader("Monthly rebalance log")
+    st.caption("Signal date identifies the model decision; return month shows when that allocation earns its return. "
+               "Opening purchases use external funding, so opening turnover is 100%.")
+    date_formats = {"signal_date": "{:%d %b %Y}", "return_month": "{:%b %Y}"}
+    money_formats = {c: "${:,.2f}" for c in ("traded_usd", "cost_usd", "opening_value", "closing_value", "trade_usd")}
+    activity_table(selected.sort_values("signal_date", ascending=False), {
+        "signal_date": "Signal date", "return_month": "Return month", "event": "Activity",
+        "assets_traded": "Assets traded", "turnover": "Turnover", "traded_usd": "Traded · USD",
+        "cost_usd": "Costs · USD", "net_return": "Month net return", "closing_value": "Month-end value · USD",
+    }, date_formats | money_formats | {"turnover": "{:.2%}", "net_return": "{:+.2%}"})
+    with st.expander("Turnover over time"):
+        line_chart(selected.set_index("signal_date")[["turnover"]].rename(columns={"turnover": "Buys + sells"}),
+                   "Portfolio turnover", percent=True)
+
+    st.subheader("Inside a rebalance")
+    options = selected.signal_date.sort_values(ascending=False).tolist()
+    if st.session_state.get("history_month") not in options:
+        st.session_state.history_month = options[0]
+    chosen = st.selectbox("Inspect a signal date", options,
+                          format_func=lambda d: f"{d:%d %b %Y} → {(d + pd.offsets.MonthEnd(1)):%b %Y} return",
+                          key="history_month")
+    event = selected.loc[selected.signal_date == chosen].iloc[0]
+    allocation = records.loc[records.signal_date == chosen].copy()
     with st.container(border=True):
-        html('''<div class="empty-state"><div class="empty-icon">▤</div>
-        <div class="eyebrow">COMING NEXT</div><h2>The full picture, trade by trade.</h2>
-        <p>Historical transactions will be added here in a later update.<br>
-        This view is prepared; no trade records have been connected yet.</p>
-        <div class="trade-preview"><span>Trade date</span><span>Asset</span><span>Buy / Sell</span>
-        <span>Quantity</span><span>Execution price</span></div></div>''')
-    st.caption("This section will display past trades. It does not place or execute orders.")
+        st.write(f"**{event.event} · {chosen:%B %Y} signal**")
+        st.write(f"Buy {event.buys:.2%} and sell {event.sells:.2%} of the portfolio. "
+                 f"Total turnover: {event.turnover:.2%}; model cost: ${event.cost_usd:,.2f} "
+                 f"({event.cost_rate * 10000:.2f} bps of portfolio value).")
+        st.write(f"Portfolio value before the return: ${event.opening_value:,.2f}. "
+                 f"The {event.return_month:%B %Y} return was {event.gross_return:+.4%} before costs and "
+                 f"{event.net_return:+.4%} after costs, leaving ${event.closing_value:,.2f}.")
+        activity_table(allocation, {
+            "asset": "Asset", "action": "Action", "previous_target": "Previous target",
+            "pretrade_weight": "Before trade · drifted", "target_weight": "After trade · target",
+            "trade_pp": "Trade · pp", "trade_usd": "Signed trade · USD", "cost_usd": "Cost · USD",
+        }, money_formats | {c: "{:.2%}" for c in ("previous_target", "pretrade_weight", "target_weight")}
+           | {"trade_pp": "{:+.3f}"})
+        st.caption("Positive amounts are buys; negative amounts are sells. Weights are relative portfolio shares. "
+                   "USD amounts are illustrative notionals, not a count of ETF shares.")
+        st.write("**Why each asset changed**")
+        activity_table(allocation, {"asset": "Asset", "status": "Rule status", "reason": "Explanation"})
+
+    with st.expander("Signal evidence and trade decomposition"):
+        satellites = allocation.loc[allocation.asset.isin(m.SATELLITE)].copy()
+        activity_table(satellites, {
+            "asset": "Asset", "adjusted_close": "Adjusted close · USD",
+            "moving_average": f"{ma_months}-month SMA · USD", "annual_volatility": "12-month annual volatility",
+            "satellite_budget": "Share of portfolio before trend filter", "status": "Trend status",
+        }, {"adjusted_close": "{:,.2f}", "moving_average": "{:,.2f}",
+            "annual_volatility": "{:.2%}", "satellite_budget": "{:.2%}"})
+        st.caption("Only prices strictly above the moving average turn a satellite on. Its inverse-volatility "
+                   "share goes to the cash proxy when off; other active assets do not absorb it. "
+                   "Adjusted closes are signal inputs, not recorded execution prices.")
+        activity_table(allocation, {
+            "asset": "Asset", "target_change_pp": "Target change · pp",
+            "drift_correction_pp": "Drift correction · pp", "trade_pp": "Total trade · pp",
+        }, {c: "{:+.3f}" for c in ("target_change_pp", "drift_correction_pp", "trade_pp")})
+        st.caption("Trade = (new target − previous target) + (previous target − drifted weight). "
+                   "pp means percentage points of portfolio value. Opening targets are measured from zero holdings.")
+
+    st.subheader("Trade-by-trade ledger")
+    left, right = st.columns(2)
+    assets = left.multiselect("Assets", allocation.asset.tolist(), default=allocation.asset.tolist(), key="history_assets")
+    actions = right.multiselect("Actions", ["Buy", "Sell", "Hold"], default=["Buy", "Sell"], key="history_actions")
+    ledger = records.loc[records.asset.isin(assets) & records.action.isin(actions)].sort_values(
+        ["signal_date", "asset"], ascending=[False, True])
+    st.caption(f"{len(ledger):,} matching records. These asset/action filters apply only to this ledger and its download.")
+    if ledger.empty:
+        st.info("No records match these filters. Select more assets, actions or a wider date range.")
+    else:
+        activity_table(ledger, {
+            "signal_date": "Signal date", "return_month": "Return month", "asset": "Asset", "action": "Action",
+            "pretrade_weight": "Before trade", "target_weight": "Target", "trade_pp": "Trade · pp",
+            "trade_usd": "Signed trade · USD", "cost_usd": "Cost · USD", "reason": "Reason",
+        }, date_formats | money_formats | {"pretrade_weight": "{:.2%}", "target_weight": "{:.2%}", "trade_pp": "{:+.3f}"})
+    left, right = st.columns(2)
+    left.download_button("Download filtered decision ledger", ledger.to_csv(index=False).encode("utf-8"),
+                         file_name="rebalance_decisions.csv", mime="text/csv", key="download_history_trades")
+    right.download_button("Download monthly rebalance log", selected.to_csv(index=False).encode("utf-8"),
+                          file_name="monthly_rebalances.csv", mime="text/csv", key="download_history_months")
+    with st.expander("How to read this history"):
+        st.write("Monthly targets are compared with holdings after the previous month's market drift. "
+                 "Even an unchanged target can require a trade. Costs equal buys plus sells × the cost rate, "
+                 "including cash-proxy legs; each asset receives its proportional cost. The engine subtracts "
+                 "costs from that month's gross return, with pro-rata expense withdrawals leaving relative weights unchanged.")
+        st.write("TBILL is an approximate cash-return proxy based on the preceding ^IRX yield / 100 / 12; "
+                 "it is not a traded security. Signal-close execution is optimistic. There are no actual orders, "
+                 "fills or share quantities in this model, and no final liquidation charge. "
+                 "Exports retain full precision; displayed values are rounded.")
 
 
 @st.cache_data(ttl=24 * 3600, show_spinner=False)
@@ -159,9 +295,7 @@ def line_chart(data, ylabel, percent=False):
         plt.close(fig)
 
 
-def overview(m, role):
-    page_heading("CORE–SATELLITE STRATEGY", "Portfolio overview",
-                 "A considered view of performance, allocation and risk.")
+def strategy_parameters(m, role):
     ma_months, core_weight, cost_bps = m.MA_MONTHS, m.CORE_WEIGHT, m.COST_BPS
     if role == "Investment Manager":
         with st.sidebar:
@@ -174,6 +308,21 @@ def overview(m, role):
             st.caption("Volatility: 12 monthly returns. Benchmark: 60% SPY / 40% AGG.")
             if (ma_months, core_weight, cost_bps) != (m.MA_MONTHS, m.CORE_WEIGHT, m.COST_BPS):
                 st.info("Scenario analysis · parameters differ from the base strategy.")
+    return ma_months, core_weight, cost_bps
+
+
+def data_error(exc):
+    st.error(f"Data or calculation check failed: {exc}")
+    st.info("Check the source data and connection, then reload. Missing returns are never replaced with zero.")
+    if st.button("Retry data connection"):
+        load_data.clear()
+        st.rerun()
+
+
+def overview(m, parameters):
+    page_heading("CORE–SATELLITE STRATEGY", "Portfolio overview",
+                 "A considered view of performance, allocation and risk.")
+    ma_months, core_weight, cost_bps = parameters
     html(f'<div class="period-strip"><span>HISTORICAL BACKTEST</span>'
          f'<b>Mar 2007 – Oct 2026</b><span>Monthly · USD · Net of costs</span></div>')
     try:
@@ -181,11 +330,7 @@ def overview(m, role):
             prices, rf = load_data(m)
             results, rf_bt, weights, res_strat = m.run_all(prices, rf, core_weight, ma_months, cost_bps)
     except (ValueError, KeyError, OSError) as exc:
-        st.error(f"Data or calculation check failed: {exc}")
-        st.info("Check the source data and connection, then reload. Missing returns are never replaced with zero.")
-        if st.button("Retry data connection"):
-            load_data.clear()
-            st.rerun()
+        data_error(exc)
         return
     table = m.performance_table(results, rf_bt)
     c1, c2, c3 = st.columns(3)
@@ -266,10 +411,11 @@ def render_app(model):
         landing()
         return
     page = shell(role)
+    parameters = strategy_parameters(model, role)
     if page == "Overview":
-        overview(model, role)
+        overview(model, parameters)
     elif page == "Trade History":
-        trade_page()
+        trade_page(model, parameters)
     else:
         team_page()
     footer()

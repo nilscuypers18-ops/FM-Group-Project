@@ -28,14 +28,32 @@ calendar month-end. Cash return is the preceding `^IRX` annual quoted yield
 divided by 100 and 12. This is an approximation, not an investable bill
 total-return index. A missing month stops the calculation instead of being filled.
 
+## Planned: crisis stress test
+
+Historical stress test on the existing monthly backtest; no new model, no Monte
+Carlo, only code patterns from `inputs/course/`. Crises: the three largest SPY
+month-end drawdowns since March 2007.
+
+| Crisis | Window | SPY |
+|---|---|---|
+| Financial crisis | Oct 2007 – Feb 2009 | −51% |
+| Covid crash | Dec 2019 – Mar 2020 | −19% |
+| Inflation/rate shock | Dec 2021 – Sep 2022 | −24% |
+
+Per crisis, for strategy, 60/40 and buy-and-hold: return, max drawdown, months
+to recover, wealth chart starting at 1. Month-end data understates intra-month
+losses.
+
 ## Files
 
 | File | Purpose |
 |---|---|
 | `strategy_backtest.ipynb` | **The master copy.** Submitted notebook; runs on its own in Google Colab |
 | `app.py` | Streamlit entry point. Loads the strategy functions straight from the notebook |
-| `portal.py`, `assets/portal.css`, `.streamlit/config.toml` | App pages and styling (T Capital portal) |
-| `tests/` | Small checks of timing, costs, weights and metrics, plus the app pages |
+| `portal.py`, `assets/portal.css`, `.streamlit/config.toml` | App pages and styling (T Capital portal), including Trade History |
+| `activity.py` | Trade History logic: monthly rebalance log, per-asset trade explanations, illustrative USD values |
+| `crisis_analysis.ipynb` | Crisis stress test (2008, Covid, 2022) on the same backtest, imported from `app.py` |
+| `tests/` | Small checks of timing, costs, weights and metrics, the app pages, and `test_activity.py` (trade history reconciles with the backtest) |
 | `COURSE_ALIGNMENT.md` | How the code maps to the course notebooks |
 | `requirements.txt` | Python packages for notebook and app |
 | `inputs/course/` | Unchanged course notebooks and slides |
@@ -65,6 +83,13 @@ The app opens on a **T Capital** landing page. **Investor login** and **Investme
 Manager login** are one-click demo navigation without passwords or accounts.
 Investors see the base strategy; managers can change the MA length, core weight
 and costs in the sidebar. Edit `TEAM` in `portal.py` to add student IDs and photos.
+
+**Trade History** shows the opening allocation and every monthly review: drifted
+holdings before the trade, new targets, buys/sells, costs, trend inputs and a short
+explanation per asset, with CSV export. Dollar amounts illustrate an initial
+investment (USD 100,000 by default); they are model notionals, not broker orders.
+The backtest records pretrade weights and trade sizes for this page; this does not
+change any returns.
 
 ## Submission work still owned by the group
 
