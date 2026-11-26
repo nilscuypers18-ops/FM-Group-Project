@@ -60,16 +60,13 @@ Backtest Jan 2007 to Oct 2026, compared with a monthly rebalanced 60/40 SPY/AGG 
 
 | File | What it does |
 |---|---|
-| `strategy.py` | All calculations for the Streamlit app: data download, signals, weights, backtest, metrics |
-| `strategy_backtest.ipynb` | Submitted notebook for the prospectus. Self-contained: it defines the same functions inline and runs on its own in Google Colab |
-| `app.py` | Streamlit app: change MA length, core weight and costs |
+| `strategy_backtest.ipynb` | Submitted notebook for the prospectus. Self-contained: it defines all functions inline and runs on its own in Google Colab |
+| `app.py` | Streamlit app (contains the same strategy functions): change MA length, core weight and costs |
 
-**Keep them in sync:** the notebook contains a copy of every function in `strategy.py`. If you change the logic in one, make the same change in the other, so the app and the prospectus numbers stay consistent.
+**Keep them in sync:** the notebook and `app.py` contain the same strategy functions. If you change the logic in one, make the same change in the other, so the app and the prospectus numbers stay consistent.
 
 Run the app locally: `pip install -r requirements.txt` then `streamlit run app.py`.
 Deploy: share.streamlit.io > New app > this repo, branch `main`, main file `app.py`.
 
 Data: Yahoo Finance via `yfinance` (adjusted close, USD), daily prices converted to month-end.
 T-bill monthly return = previous month-end `^IRX` yield / 100 / 12.
-
-x
