@@ -30,6 +30,22 @@ divided by 100 and 12. This is an approximation, not an investable bill
 total-return index. No forward fill, silent deletion of months or zero-filled
 missing returns. Inspect the four checks and quote-date audit after every refresh.
 
+## Planned: crisis stress test
+
+Historical stress test on the existing monthly backtest; no new model, no Monte
+Carlo, only code patterns from `inputs/course/`. Crises: the three largest SPY
+month-end drawdowns since March 2007.
+
+| Crisis | Window | SPY |
+|---|---|---|
+| Financial crisis | Oct 2007 – Feb 2009 | −51% |
+| Covid crash | Dec 2019 – Mar 2020 | −19% |
+| Inflation/rate shock | Dec 2021 – Sep 2022 | −24% |
+
+Per crisis, for strategy, 60/40 and buy-and-hold: return, max drawdown, months
+to recover, wealth chart starting at 1. Month-end data understates intra-month
+losses.
+
 ## Files
 
 | File | Purpose |
