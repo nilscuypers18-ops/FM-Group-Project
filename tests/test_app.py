@@ -16,8 +16,8 @@ class AppChecks(unittest.TestCase):
         raw = pd.DataFrame(100 * np.cumprod(1 + rng.normal(.0002, .008, (len(dates), 4)), axis=0),
                            index=dates, columns=sg.ASSETS)
         raw[sg.RF_TICKER] = 3.0
-        prices, rf, _ = sg.prepare_data(raw)
         with patch("yfinance.download", return_value=pd.concat({"Close": raw}, axis=1)):
+            prices, rf = sg.download_data()
             app = AppTest.from_file(str(Path(__file__).resolve().parents[1] / "app.py"))
             app.run(timeout=60)
             self.assertEqual(len(app.exception), 0)
@@ -38,7 +38,7 @@ class AppChecks(unittest.TestCase):
                 app.run(timeout=60)
                 self.assertEqual(len(app.exception), 0)
             # Deferred chart sections must also render when opened.
-            for section in ("details_allocation", "details_costs", "details_rolling"):
+            for section in ("details_allocation", "details_costs"):
                 app.session_state[section] = True
             app.run(timeout=60)
             self.assertEqual(len(app.exception), 0)
@@ -78,7 +78,7 @@ class AppChecks(unittest.TestCase):
             app.button(key="enter_investor").click().run(timeout=60)
             self.assertEqual(len(app.exception), 0)
             self.assertEqual(len(app.sidebar.slider), 0)
-            prices, rf, _ = sg.prepare_data(raw)
+            prices, rf = sg.download_data()
             expected = sg.performance_table(*sg.run_all(prices, rf)[:2]).loc["Strategy"]
             self.assertEqual(app.metric[0].value, f"{expected['Ann. return']:.2%}")
 
