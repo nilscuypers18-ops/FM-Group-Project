@@ -230,6 +230,9 @@ def backtest(target_weights, rets, start=BACKTEST_START, end=BACKTEST_END,
             raise ValueError("Costs exhaust the portfolio's capital.")
         row = {"gross": gross, "cost": cost, "net": gross - cost, "turnover": turnover}
         row.update({f"weight_{asset}": new_weights[asset] for asset in cols})
+        # Keep the actual execution inputs for the app's rebalance audit trail.
+        row.update({f"pretrade_{asset}": held[asset] for asset in cols})
+        row.update({f"trade_{asset}": new_weights[asset] - held[asset] for asset in cols})
         rows.append(row)
         held = new_weights * (1 + returns) / (1 + gross)
     return pd.DataFrame(rows, index=sample.index).rename_axis("date")

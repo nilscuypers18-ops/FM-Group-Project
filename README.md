@@ -36,7 +36,8 @@ missing returns. Inspect the four checks and quote-date audit after every refres
 |---|---|
 | `strategy_backtest.ipynb` | Standalone Colab notebook, with visible calculations and course-style pandas/Matplotlib figures |
 | `app.py` | Self-contained strategy calculations and Streamlit controls; safe to import for tests |
-| `portal.py` | Credential-free investor/manager entry, portfolio overview, trade-history placeholder and team content |
+| `portal.py` | Credential-free investor/manager entry, portfolio overview, rebalance history and team content |
+| `activity.py` | Reconciled monthly events, per-asset trade explanations and illustrative investment values |
 | `assets/portal.css` | Responsive T Capital presentation and visual styling |
 | `COURSE_ALIGNMENT.md` | Review of every input file, course mapping, methodological differences and submission checklist |
 | `tools/build_notebook.py` | Copies shared functions into the notebook; no GitHub download at notebook run time |
@@ -84,13 +85,27 @@ The app opens on a **T Capital** landing page (working brand for Group T).
 there are no credential fields, user accounts or authentication records. The role
 exists only in the active Streamlit session and is not an access-control boundary.
 Investors see the base strategy; managers can adjust scenario parameters in the
-sidebar. **Switch portal** returns to the entry screen. Team and trade-history
-pages remain available even if the market-data source is unavailable.
+sidebar, on both Overview and Trade History. **Switch portal** returns to the entry
+screen. The Team page remains available if the market-data source is unavailable;
+Overview and Trade History show the source error and a retry control.
 
 Edit `TEAM` in `portal.py` to add the six members' student IDs and local photo paths
 (for example `assets/team/nils.jpg`). Initials appear until photos are supplied.
-Trade History is a clearly marked placeholder for a later data integration.
-The financial calculations and standalone submission notebook are unchanged.
+Trade History shows the opening allocation and every monthly review, including
+months with no trades. Choose a signal-date range and inspect the drifted holdings,
+new targets, buys/sells, costs, trend inputs and allocation-change explanations for
+each rebalance. The per-asset ledger filters by asset and action; both the filtered
+ledger and monthly log export to CSV. Manager parameters stay consistent across
+Overview and Trade History; investors always see the base strategy.
+
+Dollar amounts illustrate a configurable initial investment (USD 100,000 by
+default), compounded through the full backtest before filtering. They are model
+notionals, not executed orders, actual fills or ETF share quantities. The history
+separates the signal month-end from the following return month and reconciles to
+the engine's recorded pretrade weights, trade deltas, turnover and costs. Target
+changes and drift corrections are shown separately. Recording these audit fields
+does not alter returns or the investment rule; the standalone notebook embeds
+the same updated engine.
 
 ```powershell
 .\.venv\Scripts\python.exe tools/build_notebook.py
