@@ -52,8 +52,8 @@ losses.
 |---|---|
 | `strategy_backtest.ipynb` | Standalone Colab notebook, with visible calculations and course-style pandas/Matplotlib figures |
 | `app.py` | Self-contained strategy calculations and Streamlit controls; safe to import for tests |
-| `portal.py` | Credential-free investor/manager entry, portfolio overview, trade-history placeholder and team content |
-| `assets/portal.css` | Responsive T Capital presentation and visual styling |
+| `portal.py` | Demo investor/manager login, side navigation, overview, performance, trade history and team |
+| `assets/portal.css` | T Capital design and animations (theme in `.streamlit/config.toml`) |
 | `COURSE_ALIGNMENT.md` | Review of every input file, course mapping, methodological differences and submission checklist |
 | `tools/build_notebook.py` | Copies shared functions into the notebook; no GitHub download at notebook run time |
 | `tests/test_strategy.py` | Small hand-checkable financial logic, data quality and notebook consistency checks |
@@ -95,18 +95,17 @@ Select `.venv` as the notebook kernel. To edit shared calculations, update
 `app.py` and regenerate the notebook. Edit notebook narrative/figures in
 `tools/build_notebook.py`, since regeneration replaces the notebook's contents.
 
-The app opens on a **T Capital** landing page (working brand for Group T).
-**Investor login** and **Investment Manager login** are one-click demo navigation:
-there are no credential fields, user accounts or authentication records. The role
-exists only in the active Streamlit session and is not an access-control boundary.
-Investors see the base strategy; managers can adjust scenario parameters in the
-sidebar. **Switch portal** returns to the entry screen. Team and trade-history
-pages remain available even if the market-data source is unavailable.
+The app opens on a **T Capital** landing page (working brand for Group T) with
+two one-click demo logins: **investor** and **investment manager**. There are no
+credentials or accounts; the role lives only in the Streamlit session. After login,
+a side navigation shows Overview, Performance, Trade History and Team. Managers also
+get sliders for the moving average, core weight and costs. **Log out** returns to the
+landing page. Trade History lists the model's trades (first purchase and every trend
+switch) from the backtest; small monthly rebalancing trades are only in turnover.
 
-Edit `TEAM` in `portal.py` to add the six members' student IDs and local photo paths
+Edit `TEAM` in `portal.py` to add student IDs and local photo paths
 (for example `assets/team/nils.jpg`). Initials appear until photos are supplied.
-Trade History is a clearly marked placeholder for a later data integration.
-The financial calculations and standalone submission notebook are unchanged.
+Design: `assets/portal.css` and `.streamlit/config.toml`.
 
 ```powershell
 .\.venv\Scripts\python.exe tools/build_notebook.py

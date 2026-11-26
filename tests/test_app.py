@@ -73,8 +73,11 @@ class AppChecks(unittest.TestCase):
             self.assertTrue(any("Nils Andreas Cuypers" in item.value for item in app.get("html")))
             app.radio(key="portal_page").set_value("Trade History").run(timeout=60)
             self.assertEqual(len(app.exception), 0)
-            self.assertTrue(any("no trade records" in item.value for item in app.get("html")))
-            app.button[0].click().run(timeout=60)
+            self.assertEqual(app.metric[0].label, "Trend switches")
+            self.assertEqual(len(app.dataframe), 1)
+            app.radio(key="portal_page").set_value("Performance").run(timeout=60)
+            self.assertEqual(len(app.exception), 0)
+            app.button(key="logout").click().run(timeout=60)
             app.button(key="enter_investor").click().run(timeout=60)
             self.assertEqual(len(app.exception), 0)
             self.assertEqual(len(app.sidebar.slider), 0)
@@ -91,10 +94,9 @@ class AppChecks(unittest.TestCase):
             app.button(key="enter_investor").click().run(timeout=60)
             self.assertIn("Offline", app.error[0].value)
             calls = download.call_count
-            for page in ("Team Overview", "Trade History"):
-                app.radio(key="portal_page").set_value(page).run(timeout=60)
-                self.assertEqual(len(app.exception), 0)
-                self.assertEqual(len(app.error), 0)
+            app.radio(key="portal_page").set_value("Team Overview").run(timeout=60)
+            self.assertEqual(len(app.exception), 0)
+            self.assertEqual(len(app.error), 0)
             self.assertEqual(download.call_count, calls)
 
 
