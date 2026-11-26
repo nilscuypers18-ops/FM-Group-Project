@@ -2,14 +2,26 @@
 
 Gemeinsames Projekt fuer den Kurs Financial Modelling.
 
+## Aktueller Ansatz
+
+Konservatives Family Office mit langfristigem Vermoegenserhalt und Wachstum; Fokus auf Total Return und ein flexibles Mandat.
+
+- Core: 60 % AGG (US-Anleihen).
+- Satellite: 40 % SPY (US-Aktien), GLD (Gold) und DBC (Rohstoffe).
+- Monatliches Rebalancing; Trendfilter anhand des gleitenden 10-Monats-Durchschnitts.
+- Gewichtung der Satellites anhand inverser Volatilitaet der vergangenen zwoelf Monatsrenditen; ausgeschaltete Anteile werden in T-Bills gehalten.
+- Signal am Monatsende fuer die Umsetzung im Folgemonat; Transaktionskosten von 10 Basispunkten je Einheit Turnover.
+- Monatliche Daten in USD; Backtest Januar 2007 bis Oktober 2026 mit ausreichender Datenhistorie fuer die Startsignale.
+- Vergleiche: 60 % SPY / 40 % AGG sowie eine Buy-and-hold-Version derselben Anlagen.
+
+Die genaue Verteilung zwischen aktiven Satellites und Cash, die Cash-Datenreihe und die Turnover-Konvention sind vor der Implementierung noch festzulegen.
+
 ## Dateien
 
 - `2270_FM_group_assignment_v2 (1).pdf`: Aufgabenstellung.
-- `ETF_Datencheck.ipynb`: bisheriges Arbeitsnotebook zum ETF-Datencheck.
 - `inputs/course/`: unveraenderte Vorlesungsnotebooks, Einfuehrung, Formelsammlung und Syllabus aus dem Kurs.
-- `requirements.txt`: Python-Pakete fuer das Arbeitsnotebook und einen lokalen Jupyter-Kernel.
-- `output/`: erzeugte Ergebnisse; wird nicht in Git aufgenommen.
-- `tmp/`: lokale Hilfsdateien und API-Caches; wird nicht in Git aufgenommen.
+- `requirements.txt`: Python-Pakete fuer Datenabruf, Analyse, Diagramme und einen lokalen Jupyter-Kernel.
+- `output/` und `tmp/`: bei Bedarf erzeugte Ergebnisse, Hilfsdateien und API-Caches; werden nicht in Git aufgenommen.
 
 ## Lokal arbeiten
 
@@ -22,7 +34,7 @@ py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 ```
 
-Das Notebook in einem Notebook-Editor oeffnen und `.venv` als Python-Kernel auswaehlen. Fuer Marktdatenabrufe ist eine Internetverbindung erforderlich. Die erste Notebook-Zelle prueft die verwendeten Paketversionen und installiert sie bei Bedarf. Kursnotebooks sind Referenzmaterial und koennen weitere Pakete benoetigen.
+Fuer neue Analysen `.venv` als Python-Umgebung beziehungsweise Notebook-Kernel auswaehlen. Fuer Marktdatenabrufe ist eine Internetverbindung erforderlich. Kursnotebooks sind Referenzmaterial und koennen weitere Pakete benoetigen.
 
 ## Zusammenarbeit mit GitHub Desktop
 
@@ -34,6 +46,6 @@ Das Notebook in einem Notebook-Editor oeffnen und `.venv` als Python-Kernel ausw
 6. Auf GitHub einen Pull Request von diesem Branch nach `main` oeffnen, gemeinsam pruefen und online mergen.
 7. Anschliessend lokal auf `main` wechseln und erneut **Fetch origin / Pull origin** ausfuehren.
 
-Der erste vorbereitete Arbeitsbranch heisst `nils/project-setup`. Seine Dateien sind noch nicht committet. Jedes Gruppenmitglied verwendet einen eigenen lokalen Klon. GitHub teilt Projektdateien und Commits; lokale Chatverlaeufe werden dadurch nicht geteilt.
+Jedes Gruppenmitglied verwendet einen eigenen lokalen Klon. GitHub teilt Projektdateien und Commits; lokale Chatverlaeufe werden dadurch nicht geteilt.
 
 Die Originale unter `inputs/course/` als Referenz aufbewahren; neue Analysen in eigenen Dateien erstellen. Gleichzeitige Aenderungen an demselben Notebook oder derselben Excel-Datei vorher absprechen.
