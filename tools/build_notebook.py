@@ -10,7 +10,7 @@ from pathlib import Path
 import textwrap
 
 ROOT = Path(__file__).resolve().parents[1]
-source = (ROOT / "strategy.py").read_text(encoding="utf-8")
+source = (ROOT / "app.py").read_text(encoding="utf-8").split("# Streamlit user interface")[0]
 tree = ast.parse(source)
 functions = {node.name: ast.get_source_segment(source, node)
              for node in tree.body if isinstance(node, ast.FunctionDef)}
@@ -52,7 +52,7 @@ Deployed Streamlit URL: **TO BE COMPLETED AFTER DEPLOYMENT**
 Open this file in a fresh Google Colab session and choose **Runtime → Run all**.
 Only API data are needed. This notebook contains all calculation code and does
 not download a changing Python file from GitHub. Locally, select the project's
-`.venv` kernel. The app imports the same functions from `strategy.py`.
+`.venv` kernel. The app contains the same functions in `app.py`; a consistency test checks equality.
 
 Our sequence follows the course: specify → download → inspect → clean →
 construct positions → lag → backtest gross and net → evaluate → challenge.

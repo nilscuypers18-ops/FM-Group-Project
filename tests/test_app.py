@@ -6,7 +6,7 @@ from unittest.mock import patch
 import numpy as np
 import pandas as pd
 from streamlit.testing.v1 import AppTest
-import strategy as sg
+import app as sg
 
 
 class AppChecks(unittest.TestCase):
@@ -17,7 +17,7 @@ class AppChecks(unittest.TestCase):
                            index=dates, columns=sg.ASSETS)
         raw[sg.RF_TICKER] = 3.0
         prices, rf, _ = sg.prepare_data(raw)
-        with patch.object(sg, "download_raw", return_value=raw):
+        with patch("yfinance.download", return_value=pd.concat({"Close": raw}, axis=1)):
             app = AppTest.from_file(str(Path(__file__).resolve().parents[1] / "app.py"))
             app.run(timeout=60)
             self.assertEqual(len(app.exception), 0)
@@ -38,7 +38,7 @@ class AppChecks(unittest.TestCase):
         # A new session with no cache must expose the source error to the user.
         import streamlit as st
         st.cache_data.clear()
-        with patch.object(sg, "download_raw", side_effect=ValueError("API test failure")):
+        with patch("yfinance.download", side_effect=ValueError("API test failure")):
             failed = AppTest.from_file(str(Path(__file__).resolve().parents[1] / "app.py"))
             failed.run(timeout=60)
             self.assertEqual(len(failed.exception), 0)

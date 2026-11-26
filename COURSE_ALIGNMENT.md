@@ -89,9 +89,9 @@ so a loss in the first month is counted; signs now match the positive course
 definition. An undefined denominator yields NaN rather than a fabricated ratio.
 
 **Readable reproduction.** All calculation functions are visible in the notebook.
-The builder copies them verbatim from `strategy.py`; the notebook does not fetch
+The builder copies them verbatim from `app.py`; the notebook does not fetch
 a Python module from a mutable GitHub branch. A consistency test detects divergence.
-The Streamlit app imports that same module and displays held-month weights.
+The Streamlit app contains these functions inline and displays held-month weights. The interface runs only under the main guard, so tests can import the functions safely.
 
 **Scope.** No additional optimization or simulation is needed for this strategy.
 Course examples include intentionally wrong code to teach verification. Reproduce

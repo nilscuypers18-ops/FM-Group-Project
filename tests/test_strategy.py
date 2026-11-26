@@ -7,7 +7,7 @@ import unittest
 
 import numpy as np
 import pandas as pd
-import strategy as sg
+import app as sg
 
 
 class BacktestChecks(unittest.TestCase):
@@ -146,6 +146,8 @@ class SignalAndDataChecks(unittest.TestCase):
                 embedded.update({n.name: ast.get_source_segment(src, n) for n in ast.parse(src).body
                                  if isinstance(n, ast.FunctionDef)})
         for name, function in inspect.getmembers(sg, inspect.isfunction):
+            if name == "main" or function.__module__ != sg.__name__:
+                continue
             self.assertIn(name, embedded)
             self.assertEqual(inspect.getsource(function).strip(), embedded[name].strip())
 

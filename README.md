@@ -35,8 +35,7 @@ missing returns. Inspect the four checks and quote-date audit after every refres
 | File | Purpose |
 |---|---|
 | `strategy_backtest.ipynb` | Standalone Colab notebook, with visible calculations and course-style pandas/Matplotlib figures |
-| `strategy.py` | Same calculation functions, imported by the app |
-| `app.py` | Streamlit controls for SMA length, core weight and costs |
+| `app.py` | Self-contained strategy calculations and Streamlit controls; safe to import for tests |
 | `COURSE_ALIGNMENT.md` | Review of every input file, course mapping, methodological differences and submission checklist |
 | `tools/build_notebook.py` | Copies shared functions into the notebook; no GitHub download at notebook run time |
 | `tests/test_strategy.py` | Small hand-checkable financial logic, data quality and notebook consistency checks |
@@ -75,7 +74,7 @@ py -3.12 -m venv .venv
 ```
 
 Select `.venv` as the notebook kernel. To edit shared calculations, update
-`strategy.py` and regenerate the notebook. Edit notebook narrative/figures in
+`app.py` and regenerate the notebook. Edit notebook narrative/figures in
 `tools/build_notebook.py`, since regeneration replaces the notebook's contents.
 
 ```powershell
