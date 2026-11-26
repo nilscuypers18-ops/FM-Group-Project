@@ -1,75 +1,129 @@
 X# FM Group Project
 
-Gemeinsames Projekt fuer den Kurs Financial Modelling.
+Python project for 2270 Financial Modeling. The notebook follows the course's
+sequence: assumptions → API data → four data checks → deliberate cleaning →
+signals and weights → lagged backtest → costs → performance and risk → verification.
 
-## Aktueller Ansatz
+## Investment rule
 
-Konservatives Family Office mit langfristigem Vermoegenserhalt und Wachstum; Fokus auf Total Return und ein flexibles Mandat.
+The existing group concept is a family office seeking long-term wealth preservation
+and growth in USD. The base rule keeps 60% in AGG and allocates a 40% satellite
+budget across SPY, GLD and DBC using inverse trailing 12-month volatility.
+An asset is held only above its trailing 10-month simple moving average.
+Its inactive share goes to the cash proxy; active assets do not absorb that share.
 
-- Core: 60 % AGG (US-Anleihen).
-- Satellite: 40 % SPY (US-Aktien), GLD (Gold) und DBC (Rohstoffe).
-- Monatliches Rebalancing; Trendfilter anhand des gleitenden 10-Monats-Durchschnitts.
-- Gewichtung der Satellites anhand inverser Volatilitaet der vergangenen zwoelf Monatsrenditen; ausgeschaltete Anteile werden in T-Bills gehalten.
-- Signal am Monatsende fuer die Umsetzung im Folgemonat; Transaktionskosten von 10 Basispunkten je Einheit Turnover.
-- Monatliche Daten in USD; Backtest Januar 2007 bis Oktober 2026 mit ausreichender Datenhistorie fuer die Startsignale.
-- Vergleiche: 60 % SPY / 40 % AGG sowie eine Buy-and-hold-Version derselben Anlagen.
+Signals use month-end information and earn the following month's return.
+The backtest assumes execution at the signal close, an optimistic assumption
+explained in the notebook. Transaction costs are 10 bps times buys plus sells,
+measured relative to drifted pretrade weights. Initial turnover is one; final
+liquidation is not charged. All portfolios use the same conventions.
 
-Die genaue Verteilung zwischen aktiven Satellites und Cash, die Cash-Datenreihe und die Turnover-Konvention sind vor der Implementierung noch festzulegen.
+Prices start in February 2006. **Backtest returns start in March 2007 and end
+in October 2026.** Thirteen prices are needed to estimate twelve monthly returns.
+The former January 2007 start used only ten returns; that exception was removed.
+The 60/40 SPY/AGG benchmark rebalances monthly; the same-assets buy-and-hold
+comparison trades once and lets weights drift.
 
-## Dateien
+Data: Yahoo Finance API via `yfinance`, adjusted daily ETF closes converted to
+calendar month-end. Cash return is the preceding `^IRX` annual quoted yield
+divided by 100 and 12. This is an approximation, not an investable bill
+total-return index. No forward fill, silent deletion of months or zero-filled
+missing returns. Inspect the four checks and quote-date audit after every refresh.
 
-- `2270_FM_group_assignment_v2 (1).pdf`: Aufgabenstellung.
-- `inputs/course/`: unveraenderte Vorlesungsnotebooks, Einfuehrung, Formelsammlung und Syllabus aus dem Kurs.
-- `requirements.txt`: Python-Pakete fuer Datenabruf, Analyse, Diagramme und einen lokalen Jupyter-Kernel.
-- `output/` und `tmp/`: bei Bedarf erzeugte Ergebnisse, Hilfsdateien und API-Caches; werden nicht in Git aufgenommen.
+## Files
 
-## Lokal arbeiten
+| File | Purpose |
+|---|---|
+| `strategy_backtest.ipynb` | Standalone Colab notebook, with visible calculations and course-style pandas/Matplotlib figures |
+| `app.py` | Self-contained strategy calculations and Streamlit controls; safe to import for tests |
+| `portal.py` | Credential-free investor/manager entry, portfolio overview, trade-history placeholder and team content |
+| `assets/portal.css` | Responsive T Capital presentation and visual styling |
+| `COURSE_ALIGNMENT.md` | Review of every input file, course mapping, methodological differences and submission checklist |
+| `tools/build_notebook.py` | Copies shared functions into the notebook; no GitHub download at notebook run time |
+| `tests/test_strategy.py` | Small hand-checkable financial logic, data quality and notebook consistency checks |
+| `tools/run_notebook.py` | Executes analysis in a fresh local Jupyter kernel with live API data |
+| `requirements.txt` | Notebook/app packages |
+| `requirements-dev.txt` | Additional packages for automated notebook execution |
+| `inputs/course/` | Unchanged course reference materials |
+| `2270_FM_group_assignment_v2 (1).pdf` | Assignment specification |
 
-Das Repository in GitHub Desktop klonen und genau diesen lokalen Ordner als Projekt in Codex oeffnen. Codex bearbeitet die Dateien dieses Ordners; GitHub Desktop zeigt diese Aenderungen unter **Changes**.
+The notebook shows raw data checks, source dates, descriptive returns/correlations,
+price/SMA/position panels, lagged holdings, cumulative wealth starting at one,
+gross/net costs, required metrics, positive drawdowns, rolling 60-month metrics,
+calendar-year returns and selected crisis episodes. SMA/cost/delay sensitivities
+challenge the fixed base rule; they do not select a winning parameter or constitute
+an unseen validation sample.
 
-Fuer eine neue Python-Umgebung im Projektordner:
+Generated CSVs, figures, an executed notebook and provenance are under `output/`
+and are ignored by Git. These are outputs, not input data required for submission.
+
+## Run in Google Colab
+
+Open `strategy_backtest.ipynb` in a fresh Colab session and select **Runtime → Run all**.
+The setup cell installs the analysis packages. All calculation code is contained
+inside the notebook. No repository checkout or separate Python/data file is needed.
+Internet access and working Yahoo API coverage are required. API/data failures stop
+the analysis; inspect them instead of replacing observations with fabricated data.
+
+## Run locally
+
+Use Python 3.12. From this repository folder:
 
 ```powershell
 py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m streamlit run app.py
 ```
 
-Fuer neue Analysen `.venv` als Python-Umgebung beziehungsweise Notebook-Kernel auswaehlen. Fuer Marktdatenabrufe ist eine Internetverbindung erforderlich. Kursnotebooks sind Referenzmaterial und koennen weitere Pakete benoetigen.
+Select `.venv` as the notebook kernel. To edit shared calculations, update
+`app.py` and regenerate the notebook. Edit notebook narrative/figures in
+`tools/build_notebook.py`, since regeneration replaces the notebook's contents.
 
-## Zusammenarbeit mit GitHub Desktop
+The app opens on a **T Capital** landing page (working brand for Group T).
+**Investor login** and **Investment Manager login** are one-click demo navigation:
+there are no credential fields, user accounts or authentication records. The role
+exists only in the active Streamlit session and is not an access-control boundary.
+Investors see the base strategy; managers can adjust scenario parameters in the
+sidebar. **Switch portal** returns to the entry screen. Team and trade-history
+pages remain available even if the market-data source is unavailable.
 
-1. Vor einer neuen Aufgabe auf `main` wechseln und **Fetch origin / Pull origin** ausfuehren. Vorhandene eigene Aenderungen zuvor committen.
-2. Ueber **Current branch > New branch** einen eigenen Branch anlegen, zum Beispiel `nils/portfolio-analysis`.
-3. Dateien lokal mit Codex bearbeiten und die Aenderungen unter **Changes** pruefen.
-4. Eine Commit-Nachricht eingeben und **Commit to ...** anklicken.
-5. Beim ersten Mal **Publish branch**, danach **Push origin** anklicken.
-6. Auf GitHub einen Pull Request von diesem Branch nach `main` oeffnen, gemeinsam pruefen und online mergen.
-7. Anschliessend lokal auf `main` wechseln und erneut **Fetch origin / Pull origin** ausfuehren.
+Edit `TEAM` in `portal.py` to add the six members' student IDs and local photo paths
+(for example `assets/team/nils.jpg`). Initials appear until photos are supplied.
+Trade History is a clearly marked placeholder for a later data integration.
+The financial calculations and standalone submission notebook are unchanged.
 
-Jedes Gruppenmitglied verwendet einen eigenen lokalen Klon. GitHub teilt Projektdateien und Commits; lokale Chatverlaeufe werden dadurch nicht geteilt.
+```powershell
+.\.venv\Scripts\python.exe tools/build_notebook.py
+.\.venv\Scripts\python.exe -m unittest discover -s tests -v
+.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
+.\.venv\Scripts\python.exe tools/run_notebook.py
+```
 
-Die Originale unter `inputs/course/` als Referenz aufbewahren; neue Analysen in eigenen Dateien erstellen. Gleichzeitige Aenderungen an demselben Notebook oder derselben Excel-Datei vorher absprechen.
+The last command skips only the installation cell, because packages are already
+installed, and executes every analysis cell in a fresh local kernel. It is a local
+reproduction check, not a claim that Google Colab itself was tested.
 
-## Strategy code (English)
+## Submission work still owned by the group
 
-Core-satellite trend portfolio for a family office: 60% AGG core, 40% satellite across SPY, GLD and DBC.
-A satellite asset is held only when its month-end price is above its 10-month moving average,
-otherwise its share goes to 3-month T-bills (`^IRX`). Satellite shares are set by inverse 12-month volatility.
-Monthly rebalancing, signal at month-end t and trade for month t+1, 10 bps cost per unit of turnover.
-Backtest Jan 2007 to Oct 2026, compared with a monthly rebalanced 60/40 SPY/AGG benchmark and buy & hold of the same assets.
+Review all outputs and explain every reported metric for the target client.
+Write the investor prospectus: at most seven content pages plus optional cover,
+including references and any optional-app evidence. Complete the Moodle group,
+members and AI disclosure. The assignment asks instructors to be consulted before
+using AI for strategy idea generation or complete solutions; no such approval is
+asserted here.
 
-| File | What it does |
-|---|---|
-| `strategy.py` | All calculations for the Streamlit app: data download, signals, weights, backtest, metrics |
-| `strategy_backtest.ipynb` | Submitted notebook for the prospectus. Self-contained: it defines the same functions inline and runs on its own in Google Colab |
-| `app.py` | Streamlit app: change MA length, core weight and costs |
+For optional app marks, deploy `app.py` on Streamlit Community Cloud and put both
+the accessible app URL and GitHub URL in notebook and prospectus. Source code alone
+does not meet that requirement. Deployment has not been performed by this refactor.
+Submit only the prospectus PDF and notebook, under 50 MB combined.
 
-**Keep them in sync:** the notebook contains a copy of every function in `strategy.py`. If you change the logic in one, make the same change in the other, so the app and the prospectus numbers stay consistent.
+## Working together with GitHub Desktop
 
-Run the app locally: `pip install -r requirements.txt` then `streamlit run app.py`.
-Deploy: share.streamlit.io > New app > this repo, branch `main`, main file `app.py`.
+Each member uses their own clone. Pull current changes, create an individual branch,
+review and commit local edits, push and open a pull request for group review.
+Keep course originals unchanged and coordinate edits to the notebook.
+The repository shares files and commits; it does not share local chats.
 
-Data: Yahoo Finance via `yfinance` (adjusted close, USD), daily prices converted to month-end.
-T-bill monthly return = previous month-end `^IRX` yield / 100 / 12.
-
-x
+Technical references:
+[yfinance download API](https://ranaroussi.github.io/yfinance/reference/api/yfinance.download.html),
+[pandas pct_change](https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.pct_change.html).
