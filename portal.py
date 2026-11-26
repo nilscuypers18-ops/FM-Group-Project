@@ -1,6 +1,6 @@
 """Presentation layer for the credential-free T Capital project portal.
 
-Team content lives in TEAM; add a local photo path and student ID when ready.
+Team content lives in TEAM; add a local photo path when ready.
 Roles are session-only navigation choices, not authentication or authorization.
 """
 from html import escape
@@ -15,12 +15,12 @@ from activity import rebalance_history
 
 
 TEAM = [
-    {"name": "Nils Andreas Cuypers", "initials": "NC", "photo": None, "student_id": None},
-    {"name": "Michelle De Kock", "initials": "MD", "photo": None, "student_id": None},
-    {"name": "Hanna Kiss", "initials": "HK", "photo": None, "student_id": None},
-    {"name": "Felix Michele Mellino", "initials": "FM", "photo": None, "student_id": None},
-    {"name": "Niklas Peter", "initials": "NP", "photo": None, "student_id": None},
-    {"name": "Leif Plotzky", "initials": "LP", "photo": None, "student_id": None},
+    {"name": "Nils Andreas Cuypers", "initials": "NC", "photo": None, "student_id": "78681"},
+    {"name": "Michelle de Kock", "initials": "MD", "photo": None, "student_id": "79818"},
+    {"name": "Hanna Kiss", "initials": "HK", "photo": None, "student_id": "78909"},
+    {"name": "Felix Michele Mellino", "initials": "FM", "photo": None, "student_id": "79820"},
+    {"name": "Niklas Peter", "initials": "NP", "photo": None, "student_id": "78399"},
+    {"name": "Leif Plötzky", "initials": "LP", "photo": None, "student_id": "78151"},
 ]
 ROOT = Path(__file__).resolve().parent
 PALETTE = ["#147b79", "#a9764d", "#8b9fa9", "#b4c8c5", "#ded9cc"]
