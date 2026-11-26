@@ -1,7 +1,7 @@
 """Presentation layer for the T Capital portal (Streamlit).
 
 Calculations come from app.py (strategy cells of the notebook); trade history
-logic lives in activity.py. Edit TEAM below to add photos or student IDs.
+logic lives in activity.py. Edit TEAM below to add local photo paths.
 The two logins are one-click demo roles, not authentication.
 """
 import base64
@@ -17,12 +17,12 @@ from activity import rebalance_history
 
 
 TEAM = [
-    {"name": "Nils Andreas Cuypers", "initials": "NC", "photo": None, "student_id": None},
-    {"name": "Michelle De Kock", "initials": "MD", "photo": None, "student_id": None},
-    {"name": "Hanna Kiss", "initials": "HK", "photo": None, "student_id": None},
-    {"name": "Felix Michele Mellino", "initials": "FM", "photo": None, "student_id": None},
-    {"name": "Niklas Peter", "initials": "NP", "photo": None, "student_id": None},
-    {"name": "Leif Plotzky", "initials": "LP", "photo": None, "student_id": None},
+    {"name": "Nils Andreas Cuypers", "initials": "NC", "photo": None, "student_id": "78681"},
+    {"name": "Michelle de Kock", "initials": "MD", "photo": None, "student_id": "79818"},
+    {"name": "Hanna Kiss", "initials": "HK", "photo": None, "student_id": "78909"},
+    {"name": "Felix Michele Mellino", "initials": "FM", "photo": None, "student_id": "79820"},
+    {"name": "Niklas Peter", "initials": "NP", "photo": None, "student_id": "78399"},
+    {"name": "Leif Plötzky", "initials": "LP", "photo": None, "student_id": "78151"},
 ]
 ROOT = Path(__file__).resolve().parent
 ACCENT = "#F26B3A"
@@ -378,7 +378,8 @@ def team_page():
     heading("Team", "Six people,", "one portfolio.")
     body = []
     for i, person in enumerate(TEAM):
-        sid = f'<p>Student ID {escape(str(person["student_id"]))}</p>' if person["student_id"] else ""
+        sid = (f'<p style="margin-top:.4rem">Student ID {escape(str(person["student_id"]))}</p>'
+               if person["student_id"] else "")
         if person["photo"]:
             path = ROOT / person["photo"]
             src = f"data:image/{path.suffix.lstrip('.')};base64,{base64.b64encode(path.read_bytes()).decode()}"

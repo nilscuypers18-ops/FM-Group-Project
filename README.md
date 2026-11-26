@@ -4,6 +4,17 @@ Python project for 2270 Financial Modeling. The notebook follows the course's
 sequence: assumptions → API data and checks → signals and weights → lagged
 backtest with costs → performance measures → sensitivity → limitations.
 
+## Project team
+
+| Member | Student ID |
+|---|---|
+| Nils Andreas Cuypers | 78681 |
+| Michelle de Kock | 79818 |
+| Hanna Kiss | 78909 |
+| Felix Michele Mellino | 79820 |
+| Niklas Peter | 78399 |
+| Leif Plötzky | 78151 |
+
 ## Investment rule
 
 The existing group concept is a family office seeking long-term wealth preservation
@@ -83,7 +94,8 @@ The app opens on a **T Capital** landing page. **Log in as investor** and **Log 
 as manager** are one-click demo navigation without passwords or accounts. After login,
 a side navigation shows Overview, Performance, Trade History and Team. Investors see
 the base strategy; managers can change the MA length, core weight and costs in the
-sidebar. Edit `TEAM` in `portal.py` to add student IDs and photos.
+sidebar. The Team page shows all six members and their student
+IDs. Edit `TEAM` in `portal.py` to add local photo paths.
 
 **Trade History** shows the opening allocation and every monthly review: drifted
 holdings before the trade, new targets, buys/sells, costs, trend inputs and a short
