@@ -26,7 +26,7 @@ TEAM = [
 ]
 ROOT = Path(__file__).resolve().parent
 ACCENT = "#F26B3A"
-SERIES = {"Strategy": ACCENT, "60/40 SPY/AGG": "#0A0A0A", "Buy & hold (same assets)": "#A1A1AA"}
+SERIES = {"Strategy": ACCENT, "40/60 SPY/AGG": "#0A0A0A"}
 ASSETS = {  # ticker -> name, role, colour
     "AGG": ("US Aggregate Bonds", "Core", "#3F3F46"),
     "SPY": ("S&P 500", "Satellite", ACCENT),
@@ -176,10 +176,10 @@ def overview(m, params):
     s, b = table.loc["Strategy"], table.loc[m.BENCHMARK]
     c1, c2, c3 = st.columns(3)
     c1.metric("Annualised return", f"{s['Ann. return']:.2%}",
-              f"{(s['Ann. return'] - b['Ann. return']) * 100:+.2f} pp vs 60/40")
-    c2.metric("Sharpe ratio", f"{s['Sharpe']:.2f}", f"{s['Sharpe'] - b['Sharpe']:+.2f} vs 60/40")
+              f"{(s['Ann. return'] - b['Ann. return']) * 100:+.2f} pp vs 40/60")
+    c2.metric("Sharpe ratio", f"{s['Sharpe']:.2f}", f"{s['Sharpe'] - b['Sharpe']:+.2f} vs 40/60")
     c3.metric("Maximum drawdown", f"{s['Max drawdown']:.2%}",
-              f"{(s['Max drawdown'] - b['Max drawdown']) * 100:+.2f} pp vs 60/40", delta_color="inverse")
+              f"{(s['Max drawdown'] - b['Max drawdown']) * 100:+.2f} pp vs 40/60", delta_color="inverse")
 
     with st.container(key="panel_growth"):
         html(f'<div class="mono">Growth of USD 1 · {results.index[0]:%b %Y} – {results.index[-1]:%b %Y}'
@@ -233,7 +233,7 @@ def performance(m, params):
         html(f'<div class="mono">Performance measures · {results.index[0]:%b %Y} – {results.index[-1]:%b %Y}</div>')
         st.dataframe(shown.rename_axis("Measure"), width="stretch")
         st.caption("Volatility = √12 × std. Sharpe uses excess returns over T-bills. Alpha and beta vs "
-                   "60/40 on excess returns; beta not annualised. Drawdown shown as a positive loss.")
+                   "40/60 SPY/AGG on excess returns; beta not annualised. Drawdown shown as a positive loss.")
     with st.container(key="panel_drawdown"):
         html('<div class="mono">Loss from previous high</div>')
         line_chart(m.drawdowns(results), "Loss from peak", percent=True, invert=True)

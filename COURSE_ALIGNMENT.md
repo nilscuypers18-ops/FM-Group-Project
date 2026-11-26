@@ -11,7 +11,7 @@ deliberately differs. Use this to prepare for questions about the code.
 | Price vs. moving average signal, preview chart of price, SMA and position | Lecture 4, §4.2 | `rolling(window).mean()`, position = price > SMA |
 | `shift(1)`: a decision at t earns the return of t+1 | Lecture 4, §4.1 | The look-ahead fix |
 | Net return = gross return − cost × traded weight; cost sensitivity | Lecture 4, §4.3 | Transaction costs and the breakeven-cost idea |
-| 60/40 benchmark rebalanced every period | Lecture 4, "hidden assumption" | Fixed weights imply rebalancing |
+| 40/60 SPY/AGG benchmark rebalanced every period | Lecture 4, "hidden assumption" | Fixed weights imply rebalancing |
 | Beta = cov / var, alpha from means, Sharpe and IR annualized with 12 and √12 | Lecture 3, §§3.3–3.4; formula sheet | Hand-written formulas, no black box |
 | Drawdown from the high water mark | Lecture 3, §3.5; formula sheet | Positive loss from the running maximum |
 

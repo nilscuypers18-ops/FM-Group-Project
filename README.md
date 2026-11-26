@@ -31,8 +31,8 @@ liquidation is not charged. All portfolios use the same conventions.
 
 Prices start in February 2006. **Backtest returns start in March 2007 and end
 in October 2026.** Thirteen prices are needed to estimate twelve monthly returns.
-The 60/40 SPY/AGG benchmark rebalances monthly; the same-assets buy-and-hold
-comparison trades once and lets weights drift.
+The benchmark is 40/60 SPY/AGG (40% equity, 60% bonds), rebalanced monthly.
+It has the same 60% bond share as the strategy's core.
 
 Data: Yahoo Finance API via `yfinance`, adjusted daily ETF closes converted to
 calendar month-end. Cash return is the preceding `^IRX` annual quoted yield
@@ -51,7 +51,7 @@ month-end drawdowns since March 2007.
 | Covid crash | Dec 2019 – Mar 2020 | −19% |
 | Inflation/rate shock | Dec 2021 – Sep 2022 | −24% |
 
-Per crisis, for strategy, 60/40 and buy-and-hold: return, max drawdown, months
+Per crisis, for strategy and the 40/60 benchmark: return, max drawdown, months
 to recover, wealth chart starting at 1. Month-end data understates intra-month
 losses.
 
