@@ -69,3 +69,5 @@ Deploy: share.streamlit.io > New app > this repo, branch `main`, main file `app.
 
 Data: Yahoo Finance via `yfinance` (adjusted close, USD), daily prices converted to month-end.
 T-bill monthly return = previous month-end `^IRX` yield / 100 / 12.
+
+x
