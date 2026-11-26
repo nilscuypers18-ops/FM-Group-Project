@@ -246,3 +246,37 @@ def performance_table(results, rf, benchmark="60/40 SPY/AGG"):
             "Max drawdown": max_drawdown(r),
         }
     return pd.DataFrame(rows).T
+
+
+def drawdowns(returns):
+    """Drawdown in every month: value relative to the previous peak, minus 1."""
+    growth = (1 + returns).cumprod()
+    return growth / growth.cummax() - 1
+
+
+def risk_adjusted_table(results, rf):
+    """Risk-adjusted return measures from monthly returns.
+
+      * Sharpe  = annualized mean excess return / annualized std of excess returns.
+      * Sortino = annualized mean excess return / annualized downside deviation,
+                  where downside deviation = sqrt(12 x mean(min(excess, 0)^2)),
+                  i.e. only months below the T-bill rate count as risk.
+      * Calmar  = CAGR / |max drawdown| over the full backtest.
+      * Return / volatility = CAGR / annualized volatility.
+    """
+    rows = {}
+    for name in results.columns:
+        r = results[name]
+        ex = r - rf
+        cagr = (1 + r).prod() ** (12 / len(r)) - 1
+        downside = np.sqrt((np.minimum(ex, 0) ** 2).mean() * 12)
+        mdd = max_drawdown(r)
+        rows[name] = {
+            "Sharpe": ex.mean() * 12 / (ex.std() * np.sqrt(12)),
+            "Sortino": ex.mean() * 12 / downside,
+            "Calmar": cagr / abs(mdd),
+            "Return / volatility": cagr / (r.std() * np.sqrt(12)),
+            "CAGR": cagr,
+            "Max drawdown": mdd,
+        }
+    return pd.DataFrame(rows).T
