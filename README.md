@@ -38,13 +38,16 @@ Fuer neue Analysen `.venv` als Python-Umgebung beziehungsweise Notebook-Kernel a
 
 ## Zusammenarbeit mit GitHub Desktop
 
-1. Vor einer neuen Aufgabe auf `main` wechseln und **Fetch origin / Pull origin** ausfuehren. Vorhandene eigene Aenderungen zuvor committen.
-2. Ueber **Current branch > New branch** einen eigenen Branch anlegen, zum Beispiel `nils/portfolio-analysis`.
-3. Dateien lokal mit Codex bearbeiten und die Aenderungen unter **Changes** pruefen.
-4. Eine Commit-Nachricht eingeben und **Commit to ...** anklicken.
-5. Beim ersten Mal **Publish branch**, danach **Push origin** anklicken.
-6. Auf GitHub einen Pull Request von diesem Branch nach `main` oeffnen, gemeinsam pruefen und online mergen.
-7. Anschliessend lokal auf `main` wechseln und erneut **Fetch origin / Pull origin** ausfuehren.
+Nils arbeitet dauerhaft auf `nils/work`. Der Workflow `.github/workflows/open-work-pull-request.yml` erstellt nach einem Push dieses Branches automatisch einen Pull Request nach `main`, sobald Dateiaenderungen vorliegen. Ein bereits offener Pull Request wird durch weitere Pushes aktualisiert. Nach einem Merge wird beim naechsten Push mit neuen Aenderungen ein neuer Pull Request erstellt.
+
+1. Dateien hier mit Codex bearbeiten und in GitHub Desktop unter **Changes** pruefen.
+2. Eine Commit-Nachricht eingeben und **Commit to nils/work** anklicken.
+3. **Push origin** anklicken; beim ersten Veroeffentlichen heisst die Schaltflaeche **Publish branch**.
+4. Auf GitHub unter **Pull requests** den automatisch vorbereiteten Request oeffnen, pruefen und mit **Merge pull request** sowie **Confirm merge** annehmen. Ein manuelles **Create pull request** entfaellt.
+
+Den Branch `nils/work` nach dem Merge behalten. Vor neuer Arbeit **Fetch origin** ausfuehren; Aenderungen von `main` bei Bedarf in den Arbeitsbranch uebernehmen, insbesondere nach Beitraegen anderer Gruppenmitglieder. Codex kann diese lokale Zusammenfuehrung vorbereiten. `main` bleibt der gemeinsam freigegebene Stand.
+
+Einmalige Voraussetzung fuer die Automatik: Unter **Settings > Actions > General > Workflow permissions** muss **Allow GitHub Actions to create and approve pull requests** aktiviert sein. Der Workflow erstellt Requests; die Freigabe und der Merge erfolgen durch die Gruppe.
 
 Jedes Gruppenmitglied verwendet einen eigenen lokalen Klon. GitHub teilt Projektdateien und Commits; lokale Chatverlaeufe werden dadurch nicht geteilt.
 

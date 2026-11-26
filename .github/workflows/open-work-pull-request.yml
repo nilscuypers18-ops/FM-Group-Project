@@ -1,0 +1,90 @@
+name: Prepare online review
+
+on:
+  push:
+    branches:
+      - nils/work
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: online-review-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  open-review:
+    if: github.ref_name == 'nils/work' && github.event.deleted != true
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Open a pull request when changes need review
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPOSITORY: ${{ github.repository }}
+          HEAD_BRANCH: ${{ github.ref_name }}
+          BASE_BRANCH: ${{ github.event.repository.default_branch }}
+          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+        shell: python
+        run: |
+          import json
+          import os
+          import urllib.error
+          import urllib.parse
+          import urllib.request
+
+          repository = os.environ['GH_REPOSITORY']
+          head = os.environ['HEAD_BRANCH']
+          base = os.environ['BASE_BRANCH']
+          api_root = os.environ['GITHUB_API_URL'].rstrip('/')
+
+          def api(path, data=None):
+              request = urllib.request.Request(
+                  api_root + '/repos/' + repository + '/' + path,
+                  data=None if data is None else json.dumps(data).encode('utf-8'),
+                  headers={
+                      'Authorization': 'Bearer ' + os.environ['GH_TOKEN'],
+                      'Accept': 'application/vnd.github+json',
+                      'Content-Type': 'application/json',
+                      'X-GitHub-Api-Version': '2022-11-28',
+                  },
+              )
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  return json.load(response)
+
+          def report(message):
+              print(message)
+              with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as summary:
+                  summary.write(message + '\n')
+
+          query = urllib.parse.urlencode({
+              'state': 'open',
+              'base': base,
+              'head': repository.split('/')[0] + ':' + head,
+          })
+          existing = api('pulls?' + query)
+          if existing:
+              report('Online review already open: ' + existing[0]['html_url'])
+          else:
+              comparison = api('compare/' + urllib.parse.quote(base, safe='')
+                               + '...' + urllib.parse.quote(head, safe=''))
+              if not comparison['files']:
+                  report('No file changes to review against ' + base + '.')
+              else:
+                  message = os.environ.get('COMMIT_MESSAGE', '').strip()
+                  title = message.splitlines()[0][:200] if message else 'Project changes for review'
+                  try:
+                      created = api('pulls', {
+                          'title': title,
+                          'head': head,
+                          'base': base,
+                          'body': 'Automatisch nach Commit + Push erstellt. Bitte die Aenderungen pruefen und online mergen. Weitere Pushes aktualisieren diesen Pull Request.',
+                          'draft': False,
+                      })
+                  except urllib.error.HTTPError as error:
+                      if error.code == 403:
+                          raise RuntimeError('GitHub Actions needs permission to create pull requests: Settings > Actions > General > Workflow permissions > Allow GitHub Actions to create and approve pull requests.') from None
+                      raise
+                  report('Ready for online review: ' + created['html_url'])
