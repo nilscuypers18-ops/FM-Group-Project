@@ -2,5 +2,5 @@ numpy>=1.26,<3
 pandas>=2.2,<4
 matplotlib>=3.8,<4
 yfinance>=0.2.54,<2
-streamlit>=1.40,<2
+streamlit>=1.67,<2
 ipykernel>=6.29,<8
