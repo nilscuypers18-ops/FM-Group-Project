@@ -39,7 +39,7 @@ calendar month-end. Cash return is the preceding `^IRX` annual quoted yield
 divided by 100 and 12. This is an approximation, not an investable bill
 total-return index. A missing month stops the calculation instead of being filled.
 
-## Planned: crisis stress test
+## Historical crisis stress test
 
 Historical stress test on the existing monthly backtest; no new model, no Monte
 Carlo, only code patterns from `inputs/course/`. Crises: the three largest SPY
@@ -51,9 +51,13 @@ month-end drawdowns since March 2007.
 | Covid crash | Dec 2019 – Mar 2020 | −19% |
 | Inflation/rate shock | Dec 2021 – Sep 2022 | −24% |
 
-Per crisis, for strategy and the 40/60 benchmark: return, max drawdown, months
-to recover, wealth chart starting at 1. Month-end data understates intra-month
-losses.
+The portal's **Crisis Analysis** page uses the notebook's return windows:
+Nov 2007–Feb 2009, Jan–Mar 2020 and Jan–Sep 2022. The preceding month-end is
+the starting value of 1. It compares net returns, local maximum drawdown and
+recovery for the strategy and 40/60 benchmark. Recovery counts months from
+the lowest value inside the crisis to the first subsequent return to the
+pre-crisis starting value; unrecovered paths are labelled through the sample end.
+Month-end observations understate intramonth losses.
 
 ## Files
 
@@ -63,6 +67,7 @@ losses.
 | `app.py` | Streamlit entry point. Loads the strategy functions straight from the notebook |
 | `portal.py`, `assets/portal.css`, `.streamlit/config.toml` | App pages and styling (T Capital portal), including Trade History |
 | `activity.py` | Trade History logic: monthly rebalance log, per-asset trade explanations, illustrative USD values |
+| `fund_analytics.py` | Calendar compounding, monthly heatmap data and historical crisis/recovery summaries; no investment rules |
 | `crisis_analysis.ipynb` | Crisis stress test (2008, Covid, 2022) on the same backtest, imported from `app.py` |
 | `tests/` | Small checks of timing, costs, weights and metrics, the app pages, and `test_activity.py` (trade history reconciles with the backtest) |
 | `COURSE_ALIGNMENT.md` | How the code maps to the course notebooks |
@@ -92,10 +97,23 @@ py -3.12 -m venv .venv
 
 The app opens on a **T Capital** landing page. **Log in as investor** and **Log in
 as manager** are one-click demo navigation without passwords or accounts. After login,
-a side navigation shows Overview, Performance, Trade History and Team. Investors see
+a side navigation shows Overview, Investment Approach, Performance, Fund Insights,
+Crisis Analysis, Trade History and Team. Investors see
 the base strategy; managers can change the MA length, core weight and costs in the
 sidebar. The Team page shows all six members and their student
 IDs. Edit `TEAM` in `portal.py` to add local photo paths.
+
+**Investment Approach** explains the mandate, core/satellite allocation, asset universe,
+trend filter, volatility sizing, implementation and limitations without a data download.
+**Fund Insights** explains indexed asset paths, monthly return correlations, rolling
+12-month volatility and invested satellite vs cash exposure. Manager assumptions
+apply throughout, and pages label scenarios that differ from the base strategy.
+
+**Overview** accepts an illustrative initial investment and shows the strategy and
+benchmark ending values, USD wealth paths and CAGR. The amount is retained when
+switching to Trade History. **Performance** includes compounded calendar-year
+returns (partial years marked with `*`) and a portfolio-selectable monthly heatmap;
+unobserved months remain blank. Annual returns and crisis summaries have CSV exports.
 
 **Trade History** shows the opening allocation and every monthly review: drifted
 holdings before the trade, new targets, buys/sells, costs, trend inputs and a short

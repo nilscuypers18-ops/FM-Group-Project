@@ -5,15 +5,18 @@ logic lives in activity.py. Edit TEAM below to add local photo paths.
 The two logins are one-click demo roles, not authentication.
 """
 import base64
+import calendar
 from html import escape
 from pathlib import Path
 
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 from matplotlib.ticker import PercentFormatter
 import streamlit as st
 
 from activity import rebalance_history
+from fund_analytics import CRISES, calendar_returns, monthly_grid, crisis_summary
 
 
 TEAM = [
@@ -34,7 +37,8 @@ ASSETS = {  # ticker -> name, role, colour
     "DBC": ("Commodities", "Satellite", "#8C9BF5"),
     "TBILL": ("3M US T-Bills", "Cash", "#CFCFCB"),
 }
-PAGES = ["Overview", "Performance", "Trade History", "Team Overview"]
+PAGES = ["Overview", "Investment Approach", "Performance", "Fund Insights", "Crisis Analysis",
+         "Trade History", "Team Overview"]
 LABELS = {"Team Overview": "Team"}
 
 
@@ -143,6 +147,22 @@ def holdings(detail):
     return detail.filter(like="weight_").rename(columns=lambda c: c.removeprefix("weight_"))
 
 
+def investment_input(key):
+    """Keep the illustrative capital across pages, including Streamlit widget cleanup."""
+    def remember():
+        st.session_state.investment_capital = st.session_state[key]
+    return st.number_input("Initial investment (USD)", min_value=1_000.0,
+                           max_value=1_000_000_000_000.0,
+                           value=st.session_state.get("investment_capital", 100_000.0),
+                           step=10_000.0, key=key, on_change=remember)
+
+
+def scenario_note(m, params):
+    changed = (params["core"], params["ma"], params["cost"]) != (m.CORE_WEIGHT, m.MA_MONTHS, m.COST_BPS)
+    st.caption(f"{'Manager scenario' if changed else 'Base strategy'} · {params['core']:.0%} AGG core · "
+               f"{params['ma']}-month trend · {params['cost']} bps costs · historical model, USD")
+
+
 def line_chart(data, ylabel, percent=False, colors=None, invert=False):
     if hasattr(data, "to_frame"):
         data = data.to_frame()
@@ -171,7 +191,8 @@ def overview(m, params):
     data = backtest(m, params)
     if data is None:
         return
-    _, _, results, rf_bt, detail = data
+    prices, _, results, rf_bt, detail = data
+    scenario_note(m, params)
     table = m.performance_table(results, rf_bt)
     s, b = table.loc["Strategy"], table.loc[m.BENCHMARK]
     c1, c2, c3 = st.columns(3)
@@ -182,15 +203,29 @@ def overview(m, params):
               f"{(s['Max drawdown'] - b['Max drawdown']) * 100:+.2f} pp vs 40/60", delta_color="inverse")
 
     with st.container(key="panel_growth"):
-        html(f'<div class="mono">Growth of USD 1 · {results.index[0]:%b %Y} – {results.index[-1]:%b %Y}'
-             ' · net of costs</div>')
-        line_chart(m.cumulative(results), "Value of USD 1")
+        st.subheader("What would your investment have become?")
+        capital = investment_input("overview_capital")
+        wealth = m.cumulative(results) * capital
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Strategy ending value", f"${wealth['Strategy'].iloc[-1]:,.2f}",
+                  f"${wealth['Strategy'].iloc[-1] - capital:+,.2f} total gain / loss")
+        c2.metric("Benchmark ending value", f"${wealth[m.BENCHMARK].iloc[-1]:,.2f}")
+        c3.metric("Compound annual growth · CAGR", f"{s['CAGR']:.2%}",
+                  f"{(s['CAGR'] - b['CAGR']) * 100:+.2f} pp vs 40/60")
+        html(f'<div class="mono">{results.index[0]:%b %Y} – {results.index[-1]:%b %Y} · net of model costs</div>')
+        line_chart(wealth, "Portfolio value · USD")
+        st.caption("Historical illustration with one initial investment, no deposits or withdrawals. "
+                   "CAGR includes compounding; the annualised return above is 12 × the mean monthly return. "
+                   "Taxes, management fees and inflation are excluded. This is not a forecast.")
 
     positions = holdings(detail)
     left, right = st.columns([1.1, 1], gap="medium")
     with left, st.container(key="panel_holdings"):
-        html(f'<div class="mono">Holdings · {positions.index[-1]:%B %Y}</div>'
-             f'{allocation_rows(positions.iloc[-1])}')
+        signal_date = positions.index[-1] - pd.offsets.MonthEnd(1)
+        signals = m.trend_signal(prices[m.SATELLITE], params["ma"]).loc[signal_date]
+        html(f'<div class="mono">Historical model allocation · {positions.index[-1]:%B %Y}</div>'
+             f'{allocation_rows(positions.iloc[-1], signals)}')
+        st.caption(f"Target weights held for this return month; signal dated {signal_date:%d %b %Y}.")
     with right:
         cards([("01", f"{params['core']:.0%} bond core", "AGG, held at a fixed weight."),
                ("02", f"{params['ma']}-month trend filter",
@@ -199,12 +234,13 @@ def overview(m, params):
                 "Calmer assets get a larger share (inverse 12-month volatility).")], cols=1)
 
 
-def allocation_rows(latest):
+def allocation_rows(latest, signals=None):
     rows = []
     for i, (ticker, (name, role, colour)) in enumerate(ASSETS.items()):
         w = float(latest.get(ticker, 0.0))
         if role == "Satellite":
-            tag = '<span class="tag on">Trend on</span>' if w > 0 else '<span class="tag off">Trend off</span>'
+            active = bool(signals[ticker]) if signals is not None else w > 0
+            tag = '<span class="tag on">Trend on</span>' if active else '<span class="tag off">Trend off</span>'
         else:
             tag = f'<span class="tag neutral">{role}</span>'
         label = "CASH" if ticker == "TBILL" else ticker
@@ -223,6 +259,7 @@ def performance(m, params):
     if data is None:
         return
     prices, _, results, rf_bt, detail = data
+    scenario_note(m, params)
     table = m.performance_table(results, rf_bt)
     pct = ["Ann. return", "CAGR", "Volatility", "Alpha (ann.)", "Tracking error", "Max drawdown"]
     shown = table.T.astype(object)
@@ -237,6 +274,7 @@ def performance(m, params):
     with st.container(key="panel_drawdown"):
         html('<div class="mono">Loss from previous high</div>')
         line_chart(m.drawdowns(results), "Loss from peak", percent=True, invert=True)
+    calendar_section(results)
     with st.container(key="panel_allocation"):
         html('<div class="mono">Allocation history</div>')
         positions = holdings(detail)
@@ -264,6 +302,278 @@ def performance(m, params):
                        file_name="monthly_net_returns.csv", mime="text/csv")
 
 
+# --- investment approach ------------------------------------------------------
+def approach_page(m, params):
+    heading("Investment approach", "A steady core.", "A responsive satellite.")
+    scenario_note(m, params)
+    core, satellite = params["core"], 1 - params["core"]
+    html(f'''<section class="approach-hero">
+      <div><span class="section-kicker">Our investment philosophy</span>
+        <h2>Preserve perspective.<br>Invest with discipline.</h2>
+        <p>A rules-based portfolio for a USD-based family office seeking long-term wealth
+        preservation and growth. A bond core anchors the allocation; a diversified satellite
+        responds to monthly market trends.</p></div>
+      <div class="allocation-split" aria-label="{core:.0%} bond core and {satellite:.0%} satellite">
+        <div><strong>{core:.0%}</strong><span>Bond core</span><small>US aggregate bonds · AGG</small></div>
+        <div class="satellite"><strong>{satellite:.0%}</strong><span>Adaptive satellite</span>
+        <small>Equities · Gold · Commodities</small></div>
+        <div class="split-track"><span style="width:{core:.2%}"></span></div>
+      </div></section>''')
+    st.subheader("One portfolio. Four clear decisions.")
+    cards([
+        ("The anchor", "Keep a fixed bond core",
+         f"{core:.0%} is allocated to AGG at each monthly rebalance. Bonds remain invested even when satellite trends turn off."),
+        ("The balance", "Size the satellite by volatility",
+         f"The {satellite:.0%} satellite budget is shared across SPY, GLD and DBC using inverse trailing {m.VOL_MONTHS}-month volatility. Lower volatility receives a larger share."),
+        ("The filter", "Follow the monthly trend",
+         f"Each satellite is held only when its month-end adjusted price exceeds its {params['ma']}-month simple moving average. Its inactive share moves to the cash proxy."),
+        ("The discipline", "Review once a month",
+         f"Month-end signals determine next month's holdings. Model costs of {params['cost']} bps are charged on buys plus sells, including drift corrections."),
+    ], cols=2)
+    st.subheader("The investment universe")
+    universe = pd.DataFrame([
+        ("AGG", "US aggregate bonds", "Fixed core", "Income and diversification; exposed to interest-rate and credit risk."),
+        ("SPY", "US large-cap equities", "Trend-filtered satellite", "Participation in equity growth; exposed to equity-market losses."),
+        ("GLD", "Gold", "Trend-filtered satellite", "A different source of returns; no income and potentially sharp price swings."),
+        ("DBC", "Broad commodities", "Trend-filtered satellite", "Commodity exposure; futures and roll effects can affect returns."),
+        ("TBILL", "Cash-return proxy", "Inactive satellite allocation", "Previous ^IRX annual yield / 100 / 12; an approximation, not a traded fund."),
+    ], columns=["Ticker", "Exposure", "Portfolio role", "What to understand"])
+    st.dataframe(universe, hide_index=True, width="stretch")
+    left, right = st.columns(2, gap="medium")
+    with left, st.container(key="panel_approach_process"):
+        st.subheader("From observation to allocation")
+        st.markdown("**Month-end data → trend and volatility → target weights → next month's return.**")
+        st.write("An inactive satellite does not hand its budget to the other risky assets. "
+                 "That share stays in the cash proxy until the asset's trend turns positive again.")
+        st.caption("The backtest assumes execution at the same close used to observe the signal. "
+                   "This is optimistic; a real implementation would need an executable trading schedule.")
+    with right, st.container(key="panel_approach_limits"):
+        st.subheader("What the approach asks of investors")
+        st.write("A long horizon and tolerance for losses. The bond core can fall, trend signals can reverse "
+                 "repeatedly, and the strategy can lag during fast market rebounds. Capital is not guaranteed.")
+        st.caption("Educational model portfolio, not a live regulated fund. No actual subscriptions, "
+                   "NAV, assets under management or management-fee schedule are represented.")
+
+
+# --- calendar performance -----------------------------------------------------
+def calendar_section(results):
+    with st.container(key="panel_calendar"):
+        st.subheader("Year by year")
+        st.write("Compare the compounded net return in each calendar year. This shows when the "
+                 "strategy helped and when the benchmark did better.")
+        annual = calendar_returns(results)
+        fig, ax = plt.subplots(figsize=(11, 3.8))
+        annual.plot.bar(ax=ax, color=[SERIES.get(c, "#6B6B6B") for c in annual.columns], width=.75)
+        ax.axhline(0, color="#9A9A96", linewidth=.8)
+        ax.yaxis.set_major_formatter(PercentFormatter(1))
+        ax.set_xlabel("")
+        ax.set_ylabel("Compounded net return")
+        ax.spines[["top", "right"]].set_visible(False)
+        ax.legend(frameon=False, ncol=2)
+        plt.xticks(rotation=45, ha="right")
+        fig.tight_layout()
+        st.pyplot(fig, width="stretch")
+        plt.close(fig)
+        st.caption("* Partial year: only observed months are compounded, without annualisation. "
+                   f"Sample: {results.index[0]:%b %Y}–{results.index[-1]:%b %Y}.")
+        with st.expander("View annual return table"):
+            st.dataframe(annual.style.format("{:+.2%}"), width="stretch")
+        st.download_button("Download annual returns", annual.to_csv().encode("utf-8"),
+                           "annual_net_returns.csv", "text/csv", key="annual_download")
+    with st.container(key="panel_heatmap"):
+        st.subheader("Month by month")
+        portfolio = st.selectbox("Heatmap portfolio", results.columns, key="heatmap_portfolio")
+        grid = monthly_grid(results[portfolio])
+        values = grid.to_numpy(dtype=float)
+        limit = max(float(np.nanmax(np.abs(values))), .01)
+        fig, ax = plt.subplots(figsize=(11, max(4, len(grid) * .32)))
+        cmap = plt.get_cmap("RdYlGn").with_extremes(bad="#F0F0ED")
+        im = ax.imshow(np.ma.masked_invalid(values), cmap=cmap, vmin=-limit, vmax=limit, aspect="auto")
+        ax.set_xticks(range(12), list(calendar.month_abbr)[1:])
+        ax.set_yticks(range(len(grid)), grid.index)
+        for row in range(len(grid)):
+            for col in range(12):
+                value = values[row, col]
+                ax.text(col, row, "—" if np.isnan(value) else f"{value:+.1%}",
+                        ha="center", va="center", fontsize=8,
+                        color="white" if abs(value) > limit * .65 else "#222222")
+        ax.spines[:].set_visible(False)
+        fig.colorbar(im, ax=ax, fraction=.025, pad=.025, format=PercentFormatter(1))
+        fig.tight_layout()
+        st.pyplot(fig, width="stretch")
+        plt.close(fig)
+        st.caption("Each cell is one month's net return, not an annualised figure. "
+                   "Green indicates a gain, red a loss; signed values also show the direction. "
+                   "Grey cells (—) are outside the sample, not zero-return months.")
+        with st.expander("View monthly return table"):
+            readable = grid.rename(columns=lambda month: calendar.month_abbr[month])
+            st.dataframe(readable.style.format("{:+.2%}", na_rep="—"), width="stretch")
+
+
+# --- fund insights ------------------------------------------------------------
+def insights_page(m, params):
+    heading("Fund insights", "Understand the portfolio.", "Beyond the headline return.")
+    scenario_note(m, params)
+    html('''<p class="lead">Explore the exposures behind the model, how they move together,
+      and how portfolio risk changes through time. Each chart answers a different investment question.</p>''')
+    data = backtest(m, params)
+    if data is None:
+        return
+    prices, _, results, _, detail = data
+    cards([
+        ("Mandate", "Long-term wealth preservation & growth", "USD-based model portfolio with monthly rebalancing; no leverage or short positions."),
+        ("Comparison", "40% SPY / 60% AGG", "A monthly rebalanced stock/bond benchmark, measured over the same dates and with the same cost assumptions."),
+        ("Evidence", f"{len(results)} monthly observations", f"{results.index[0]:%b %Y} to {results.index[-1]:%b %Y}. Historical net returns; not a live fund track record."),
+    ])
+    with st.container(key="panel_assets"):
+        st.subheader("Different assets. Different paths.")
+        st.write("How did each underlying ETF develop over the backtest? All exposures start at 100 "
+                 "at the month-end before the first portfolio return.")
+        baseline = results.index[0] - pd.offsets.MonthEnd(1)
+        sample = prices.loc[baseline:results.index[-1], m.ASSETS]
+        line_chart(sample.div(sample.iloc[0]) * 100, "Indexed adjusted price · start = 100",
+                   colors=[ASSETS[c][2] for c in sample.columns])
+        st.caption("Standalone adjusted-price histories, without the strategy's weights or transaction costs. "
+                   "This chart explains the investment universe; it is not the fund's performance.")
+    with st.container(key="panel_correlation"):
+        st.subheader("Do the assets move together?")
+        st.write("Correlation compares monthly ETF returns. Values near +1 mean they tended to move "
+                 "together; values near zero mean a weak linear relationship; negative values mean opposing movements.")
+        asset_returns = prices.pct_change().reindex(results.index)[m.ASSETS]
+        corr = asset_returns.corr()
+        fig, ax = plt.subplots(figsize=(7, 3.5))
+        im = ax.imshow(corr, cmap="RdBu_r", vmin=-1, vmax=1)
+        ax.set_xticks(range(len(corr)), corr.columns)
+        ax.set_yticks(range(len(corr)), corr.index)
+        for i in range(len(corr)):
+            for j in range(len(corr)):
+                ax.text(j, i, f"{corr.iloc[i, j]:.2f}", ha="center", va="center",
+                        color="white" if abs(corr.iloc[i, j]) > .6 else "#222")
+        ax.spines[:].set_visible(False)
+        fig.colorbar(im, ax=ax, fraction=.035, pad=.04)
+        fig.tight_layout()
+        st.pyplot(fig, width="stretch")
+        plt.close(fig)
+        st.caption("Computed from adjusted monthly ETF returns over the portfolio backtest sample. "
+                   "Historical correlations can change, especially during crises; diversification does not guarantee protection.")
+    with st.container(key="panel_rolling_risk"):
+        st.subheader("Risk changes through time")
+        st.write("Trailing 12-month volatility shows how much monthly portfolio returns fluctuated "
+                 "in the preceding year. Compare the strategy with the benchmark through calm and stressed markets.")
+        rolling = results.rolling(12, min_periods=12).std().dropna() * np.sqrt(12)
+        line_chart(rolling, "Annualised 12-month volatility", percent=True)
+        st.caption("Sample standard deviation of the last 12 monthly net returns × √12. "
+                   "The first point needs a full year of observations. This is realised volatility, not a forecast or a loss limit.")
+    with st.container(key="panel_exposure"):
+        st.subheader("How much of the satellite stayed invested?")
+        st.write("When satellite trends turn off, their budget moves to cash. The chart separates "
+                 "the invested satellite from the cash proxy; the fixed AGG core is excluded.")
+        positions = holdings(detail)
+        exposure = pd.DataFrame({"Invested satellite": positions[m.SATELLITE].sum(axis=1),
+                                 "Cash proxy": positions[m.TBILL]})
+        line_chart(exposure, "Share of total portfolio", percent=True, colors=[ACCENT, "#707078"])
+        st.caption(f"Both lines together equal the {1 - params['core']:.0%} satellite budget. "
+                   "These are monthly target weights used for returns, rather than intramonth holdings.")
+    with st.expander("Model facts and limitations", expanded=False):
+        st.write(f"**Data:** Yahoo Finance adjusted ETF closes, sampled at month-end. "
+                 f"**Signal:** {params['ma']}-month SMA. **Volatility window:** {m.VOL_MONTHS} months. "
+                 f"**Trading costs:** {params['cost']} bps × buys plus sells, including initial investment.")
+        st.write("Cash returns approximate the preceding ^IRX quoted annual yield divided by 100 and 12. "
+                 "Signals are lagged by one return month; execution at the signal close is optimistic. "
+                 "Taxes, management fees, inflation and additional market impact are excluded. "
+                 "Asset selection uses hindsight, and this historical sample is not an out-of-sample validation.")
+
+
+# --- historical crisis analysis ----------------------------------------------
+def crisis_page(m, params):
+    heading("Crisis analysis", "When markets fall,", "look closer.")
+    scenario_note(m, params)
+    html('''<p class="lead">Three historical stress periods. The same portfolio rules.
+      Explore losses, diversification and the path back to the starting value.</p>''')
+    data = backtest(m, params)
+    if data is None:
+        return
+    _, _, results, _, _ = data
+    name = st.selectbox("Historical crisis", list(CRISES), key="selected_crisis")
+    start, end = CRISES[name]
+    descriptions = {
+        "Financial crisis": "A prolonged equity-market decline. The window follows SPY's October 2007 month-end peak to its February 2009 month-end low.",
+        "Covid crash": "A rapid sell-off followed by a fast rebound. The window follows SPY's December 2019 month-end peak to March 2020.",
+        "Inflation shock": "A difficult period for both stocks and bonds. The window follows SPY's December 2021 month-end peak to September 2022.",
+    }
+    st.write(descriptions[name])
+    summary = crisis_summary(m, results, start, end)
+    if summary.empty:
+        st.info("The complete crisis window is not available in this backtest sample.")
+        return
+    window = results.loc[start:end]
+    st.caption(f"Return months: {window.index[0]:%b %Y}–{window.index[-1]:%b %Y}. "
+               "Each path starts at 1 at the preceding month-end. All returns are net of model trading costs.")
+    left, right = st.columns(2)
+    for col, portfolio in zip((left, right), results.columns):
+        row = summary.loc[portfolio]
+        with col, st.container(key=f"panel_crisis_{portfolio.split()[0]}"):
+            st.subheader(portfolio)
+            st.metric("Return during crisis", f"{row['Crisis return']:+.2%}")
+            st.metric("Maximum drawdown in window", f"{row['Max drawdown']:.2%}")
+            if row["Months to recover"] == 0:
+                recovery_text = "No recovery needed"
+            elif pd.isna(row["Months to recover"]):
+                recovery_text = "Not recovered"
+            else:
+                recovery_text = f"{int(row['Months to recover'])} months"
+            st.metric("From crisis low to starting value", recovery_text)
+            if pd.notna(row["Recovery date"]) and row["Months to recover"] != 0:
+                st.caption(f"Crisis low: {row['Crisis low']:%b %Y} · recovery: {row['Recovery date']:%b %Y}")
+            elif pd.isna(row["Months to recover"]):
+                st.caption(f"Below the pre-crisis starting value through {results.index[-1]:%b %Y}.")
+    with st.container(key="panel_crisis_path"):
+        st.subheader("Inside the crisis")
+        line_chart(m.cumulative(window), "Value of USD 1")
+        st.caption("A value of 0.80 means USD 1 became USD 0.80. Maximum drawdown measures the "
+                   "largest peak-to-trough loss within this window, including the initial value of 1.")
+    with st.container(key="panel_recovery_path"):
+        st.subheader("The path back")
+        # Retain the original start and holdings; do not restart a backtest at the crisis.
+        recovery_dates = summary["Recovery date"]
+        last_date = (results.index[-1] if recovery_dates.isna().any()
+                     else max(window.index[-1], recovery_dates.max()))
+        path = m.cumulative(results.loc[start:last_date])
+        fig, ax = plt.subplots(figsize=(11, 3.8))
+        path.plot(ax=ax, color=[SERIES[c] for c in path.columns], linewidth=1.8)
+        ax.axhline(1, color="#9A9A96", linestyle="--", linewidth=.9, label="Pre-crisis starting value")
+        ax.axvspan(path.index[0], window.index[-1], color=ACCENT, alpha=.07)
+        ax.set_xlabel("")
+        ax.set_ylabel("Value of USD 1")
+        ax.spines[["top", "right"]].set_visible(False)
+        ax.legend(frameon=False, loc="lower left", bbox_to_anchor=(0, 1), ncol=2)
+        fig.tight_layout()
+        st.pyplot(fig, width="stretch")
+        plt.close(fig)
+        st.caption("Shading marks the crisis window. Recovery counts calendar months from each portfolio's "
+                   "lowest value inside that window until it first regains its pre-crisis starting value. "
+                   "It is not recovery to a later portfolio peak. The search uses all subsequent available returns.")
+    st.subheader("Across all three crises")
+    comparisons = []
+    for crisis, (first, last) in CRISES.items():
+        report = crisis_summary(m, results, first, last)
+        if not report.empty:
+            report = report.reset_index()
+            report.insert(0, "Crisis", crisis)
+            comparisons.append(report)
+    combined = pd.concat(comparisons, ignore_index=True)
+    shown = combined[["Crisis", "Portfolio", "Crisis return", "Max drawdown", "Months to recover"]].copy()
+    shown["Months to recover"] = shown["Months to recover"].map(
+        lambda v: "Not recovered" if pd.isna(v) else ("Not needed" if v == 0 else f"{int(v)}"))
+    st.dataframe(shown.style.format({"Crisis return": "{:+.2%}", "Max drawdown": "{:.2%}"}),
+                 hide_index=True, width="stretch")
+    st.download_button("Download crisis analysis", combined.to_csv(index=False).encode("utf-8"),
+                       "historical_crisis_analysis.csv", "text/csv")
+    st.caption("Historical windows follow the project's crisis notebook and are defined using SPY month-end peaks "
+               "and lows. Monthly observations hide intramonth losses. These selected episodes do not represent "
+               "every possible stress scenario or establish future protection.")
+
+
 # --- trade history (logic in activity.py) ---------------------------------------
 def activity_table(data, columns, formats=None):
     """Readable labels for display; values stay numeric for export."""
@@ -283,9 +593,8 @@ def trade_page(m, params):
     prices, _, _, _, detail = data
 
     left, right = st.columns([1, 2])
-    capital = left.number_input("Initial investment (USD)", min_value=1_000.0,
-                                max_value=1_000_000_000_000.0, value=100_000.0,
-                                step=10_000.0, key="history_capital")
+    with left:
+        capital = investment_input("history_capital")
     months, decisions = rebalance_history(m, prices, detail, ma_months, capital)
     first, last = months.signal_date.iloc[0].date(), months.signal_date.iloc[-1].date()
     dates = right.date_input("Signal dates", value=(first, last), min_value=first,
@@ -402,8 +711,14 @@ def render_app(model):
     page, params = shell(model, role)
     if page == "Overview":
         overview(model, params)
+    elif page == "Investment Approach":
+        approach_page(model, params)
     elif page == "Performance":
         performance(model, params)
+    elif page == "Fund Insights":
+        insights_page(model, params)
+    elif page == "Crisis Analysis":
+        crisis_page(model, params)
     elif page == "Trade History":
         trade_page(model, params)
     else:
