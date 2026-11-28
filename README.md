@@ -41,8 +41,8 @@ total-return index. A missing month stops the calculation instead of being fille
 
 ## Historical crisis stress test
 
-Historical stress test on the existing monthly backtest; no new model, no Monte
-Carlo, only code patterns from `inputs/course/`. Crises: the three largest SPY
+Historical stress test on the existing monthly backtest, separate from the Monte
+Carlo scenarios below. Crises: the three largest SPY
 month-end drawdowns since March 2007.
 
 | Crisis | Window | SPY |
@@ -58,6 +58,27 @@ recovery for the strategy and 40/60 benchmark. Recovery counts months from
 the lowest value inside the crisis to the first subsequent return to the
 pre-crisis starting value; unrecovered paths are labelled through the sample end.
 Month-end observations understate intramonth losses.
+
+## Monte Carlo scenarios
+
+The **Monte Carlo** page follows Lecture 5's wealth simulation: 10,000 paths of
+normal monthly portfolio returns, calibrated to the existing backtest after costs.
+Default: USD 100,000, 10 years, seed 2270, no contributions or withdrawals. Initial
+capital and a 1–30 year horizon are adjustable. Historical mean, sample volatility
+and strategy–benchmark correlation are held fixed; months are independent.
+
+The page shows 5th–95th and 25th–75th percentile bands, medians, mean terminal wealth
+and the probability of ending below the initial nominal capital. Calibration,
+formulas, course connection and model limits are explained on the page. CSV exports
+include inputs and summary results, plus monthly bands. Manager assumptions update
+the underlying backtest and therefore the simulation's calibration.
+
+The calculation lives in section 6 of the master notebook and is loaded by `app.py`,
+so the submitted notebook reproduces the default portal calculation. This models
+portfolio-level returns, not future ETF prices, trend signals or trades. Normality,
+fixed parameters and independent months miss tail events and changing regimes;
+inflation, taxes and additional management fees are excluded. A generated return
+at or below -100% raises a clear error. Results are model-dependent scenarios.
 
 ## Files
 
@@ -98,7 +119,7 @@ py -3.12 -m venv .venv
 The app opens on a **T Capital** landing page. **Log in as investor** and **Log in
 as manager** are one-click demo navigation without passwords or accounts. After login,
 a side navigation shows Overview, Investment Approach, Performance, Fund Insights,
-Crisis Analysis, Trade History and Team. Investors see
+Crisis Analysis, Monte Carlo, Trade History and Team. Investors see
 the base strategy; managers can change the MA length, core weight and costs in the
 sidebar. The Team page shows all six members and their student
 IDs. Edit `TEAM` in `portal.py` to add local photo paths.

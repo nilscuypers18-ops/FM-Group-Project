@@ -14,6 +14,7 @@ deliberately differs. Use this to prepare for questions about the code.
 | 40/60 SPY/AGG benchmark rebalanced every period | Lecture 4, "hidden assumption" | Fixed weights imply rebalancing |
 | Beta = cov / var, alpha from means, Sharpe and IR annualized with 12 and √12 | Lecture 3, §§3.3–3.4; formula sheet | Hand-written formulas, no black box |
 | Drawdown from the high water mark | Lecture 3, §3.5; formula sheet | Positive loss from the running maximum |
+| Monte Carlo wealth paths, percentile bands and terminal loss probability | Lecture 5, §§5.3 and 5.5 | 10,000 normal-return paths, monthly compounding, seed 2270; means scale with time and volatility with √time |
 
 ## Deliberate differences (be ready to explain)
 
@@ -30,8 +31,24 @@ deliberately differs. Use this to prepare for questions about the code.
 * **Sample starts in March 2007.** Twelve monthly returns (thirteen prices from February
   2006) are needed for the first volatility estimate.
 
+## Monte Carlo extension
+
+Section 6 and the portal's Monte Carlo page use the same `monte_carlo()` function from
+the master notebook. The default is a USD 100,000 lump sum over 10 years. Monthly means
+and sample volatilities are estimated from the full common backtest's net returns;
+there are no contributions or withdrawals. The normal model simulates portfolio
+returns, not future trend decisions or ETF weights. Costs are already in the inputs.
+
+An explicit extension to the single-portfolio lecture example pairs strategy and
+benchmark shocks using their historical monthly correlation: `z_strategy = z1` and
+`z_benchmark = rho*z1 + sqrt(1-rho**2)*z2`, for independent standard normals z1 and z2.
+Months are independent and the estimated parameters are fixed. The portal shows
+the calibration, formulas, interpretation and limitations, and exports assumptions
+and percentile bands. A normal return at or below -100% raises an error rather than
+being silently clipped. These are scenarios under a model, not forecasts.
+
 ## Not included on purpose
 
-Monte Carlo (Lecture 5), bond pricing (Lecture 2) and optimisation are not required by
-the assignment and would add a different model. Their lessons (explicit assumptions,
-interest-rate risk of the bond core) are discussed in the notebook's limitations.
+Bond pricing (Lecture 2) and optimisation are not required by the assignment and
+would add a different model. Interest-rate risk of the bond core is discussed in
+the notebook's limitations.

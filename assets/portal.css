@@ -138,3 +138,15 @@
 .allocation-split .split-track span{height:100%;background:#D1D1D8;margin:0}
 @media(max-width:800px){.approach-hero{grid-template-columns:1fr;gap:1.6rem;padding:1.6rem}}
 @media(max-width:420px){.allocation-split{padding:1rem;gap:.8rem}}
+
+/* Monte Carlo: explain assumptions before presenting simulated wealth. */
+.mc-context{display:flex;align-items:center;gap:1rem;flex-wrap:wrap;margin:1.2rem 0}
+.mc-context p{font-size:1rem;line-height:1.65;color:#4A4A53;margin:0;flex:1;min-width:240px}
+.mc-pill{display:inline-block;background:#FDEEE8;color:#9C3915;border:1px solid #F6CBB9;
+  border-radius:999px;padding:.45rem .8rem;font-size:.875rem;white-space:nowrap}
+.mc-note{margin:1.6rem 0;background:#14151A;border-radius:12px;padding:1.5rem 1.7rem;color:#fff;
+  border-left:4px solid var(--accent)}
+.mc-note strong{font-weight:500;font-size:1.125rem}
+.mc-note p{color:#D5D5DC;font-size:1rem;line-height:1.75;margin:.65rem 0 0;max-width:100ch}
+[class*="st-key-panel_mc"] [data-testid="stWidgetLabel"] p{font-size:1rem}
+[class*="st-key-panel_mc"] [data-testid="stCaptionContainer"] p{font-size:.875rem;line-height:1.6}

@@ -9,10 +9,13 @@ import calendar
 from html import escape
 from pathlib import Path
 
+import matplotlib
+
+matplotlib.use("Agg")  # Streamlit renders images; no desktop plotting backend is needed.
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from matplotlib.ticker import PercentFormatter
+from matplotlib.ticker import FuncFormatter, MaxNLocator, PercentFormatter
 import streamlit as st
 
 from activity import rebalance_history
@@ -37,7 +40,7 @@ ASSETS = {  # ticker -> name, role, colour
     "DBC": ("Commodities", "Satellite", "#8C9BF5"),
     "TBILL": ("3M US T-Bills", "Cash", "#CFCFCB"),
 }
-PAGES = ["Overview", "Investment Approach", "Performance", "Fund Insights", "Crisis Analysis",
+PAGES = ["Overview", "Investment Approach", "Performance", "Fund Insights", "Crisis Analysis", "Monte Carlo",
          "Trade History", "Team Overview"]
 LABELS = {"Team Overview": "Team"}
 
@@ -574,6 +577,178 @@ def crisis_page(m, params):
                "every possible stress scenario or establish future protection.")
 
 
+# --- Monte Carlo (shared calculations in the master notebook) -----------------
+@st.cache_data(show_spinner=False, max_entries=6)
+def simulation_data(_model, results, initial, years):
+    return _model.monte_carlo(results, initial=initial, years=years)
+
+
+def simulation_chart(simulation, selected):
+    """Pointwise wealth percentiles, with the other portfolio's median for context."""
+    band = simulation["bands"][selected]
+    other = next(name for name in simulation["bands"] if name != selected)
+    color = SERIES.get(selected, ACCENT)
+    x = band.index.to_numpy() / 12
+    with plt.rc_context({"font.size": 12, "axes.labelcolor": "#55555E",
+                         "xtick.color": "#55555E", "ytick.color": "#55555E"}):
+        fig, ax = plt.subplots(figsize=(11, 4.8))
+        ax.fill_between(x, band["5th"], band["95th"], color=color, alpha=.10,
+                        linewidth=0, label="5th–95th percentile")
+        ax.fill_between(x, band["25th"], band["75th"], color=color, alpha=.20,
+                        linewidth=0, label="25th–75th percentile")
+        ax.plot(x, band["Median"], color=color, linewidth=2.5, label=f"{selected} median")
+        ax.plot(x, simulation["bands"][other]["Median"], color=SERIES.get(other, "#656575"),
+                linewidth=1.6, linestyle="--", label=f"{other} median")
+        ax.axhline(simulation["initial"], color="#77777F", linewidth=1, linestyle=":",
+                   label="Initial capital")
+        ax.set(xlabel="Years from investment", ylabel="Portfolio value · USD",
+               xlim=(0, simulation["years"]))
+        ax.yaxis.set_major_formatter(FuncFormatter(lambda value, _: f"${value:,.0f}"))
+        ax.xaxis.set_major_locator(MaxNLocator(integer=True, nbins=6))
+        ax.grid(axis="y", color="#ECECE9", linewidth=.7)
+        ax.set_axisbelow(True)
+        ax.spines[["top", "right", "left"]].set_visible(False)
+        ax.spines["bottom"].set_color("#DDDDE0")
+        ax.tick_params(axis="both", length=0, pad=9)
+        ax.legend(loc="lower left", bbox_to_anchor=(0, 1.03), ncol=2,
+                  frameon=False, fontsize=10)
+        fig.tight_layout()
+        st.pyplot(fig, width="stretch")
+        plt.close(fig)
+
+
+def monte_carlo_page(m, params):
+    heading("Monte Carlo · Lecture 5", "One investment.", "Many possible paths.")
+    scenario_note(m, params)
+    html('<p class="lead">What might your capital be worth in the future? Explore 10,000 '
+         'simulated outcomes for our strategy and the 40/60 benchmark, using the method from Lecture 5.</p>')
+    data = backtest(m, params)
+    if data is None:
+        return
+    results = data[2]
+    with st.container(key="panel_mc_controls"):
+        left, right = st.columns(2, gap="large")
+        with left:
+            capital = investment_input("mc_capital")
+        years = right.slider("Investment horizon (years)", 1, 30, 10, key="mc_years",
+                             help="One initial investment, with no further deposits or withdrawals.")
+        st.caption("10,000 paths · monthly compounding · fixed seed 2270 · nominal USD · no deposits or withdrawals")
+    try:
+        with st.spinner("Simulating possible wealth paths…"):
+            simulation = simulation_data(m, results, capital, years)
+    except (ValueError, OverflowError) as exc:
+        st.error(f"Simulation check failed: {exc}")
+        return
+
+    summary = simulation["summary"]
+    strategy = summary.loc["Strategy"]
+    html(f'<div class="mc-context"><span class="mc-pill">Modelled scenarios</span>'
+         f'<p>Starting with <strong>${capital:,.0f}</strong> for <strong>{years} '
+         f'{"year" if years == 1 else "years"}</strong>. Parameters are estimated from '
+         f'<strong>{len(results)} monthly returns</strong>, {results.index[0]:%b %Y}–{results.index[-1]:%b %Y}, '
+         'after backtest transaction costs.</p></div>')
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Median end wealth", f"${strategy['Median end wealth']:,.0f}",
+              help="Half of simulated final values fall below the median and half above it.")
+    c2.metric("5th percentile", f"${strategy['5th percentile']:,.0f}",
+              help="About 5% of simulated final values fall below this amount. It is not a worst case.")
+    c3.metric("End-loss frequency", f"{strategy['Probability of loss']:.2%}",
+              help="Fraction of paths whose final nominal wealth is below the initial investment. "
+                   "Temporary losses during the investment are not counted by this measure.")
+    loss_paths = int(round(strategy["Probability of loss"] * simulation["n_sim"]))
+    st.caption(f"Strategy outcomes · {loss_paths:,} of {simulation['n_sim']:,} paths ended below "
+               "initial capital. Zero simulated losses would not mean that future losses are impossible.")
+
+    with st.container(key="panel_mc_paths"):
+        st.subheader("The range of possible outcomes")
+        selected = st.radio("Show outcome bands for", list(results.columns), horizontal=True,
+                            key="mc_portfolio")
+        simulation_chart(simulation, selected)
+        band = simulation["bands"][selected]
+        st.write(f"**Reading the chart:** after {years} {'year' if years == 1 else 'years'}, "
+                 f"the middle 90% of simulated **{selected}** outcomes lie between "
+                 f"**${band['5th'].iloc[-1]:,.0f}** and **${band['95th'].iloc[-1]:,.0f}**. "
+                 "The darker area contains the middle 50%; the solid line is the median.")
+        st.caption("The bands are percentiles at each month, not a guarantee that an entire path stays inside them. "
+                   "The dashed line shows the other portfolio's median; the dotted line marks your starting capital.")
+
+    with st.container(key="panel_mc_comparison"):
+        st.subheader("Same capital. Same horizon.")
+        st.write("Compare the full end-wealth distributions, rather than relying on one average.")
+        formats = {column: "${:,.0f}" for column in summary.columns if column != "Probability of loss"}
+        formats["Probability of loss"] = "{:.2%}"
+        labels = {"Median end wealth": "Median", "Mean end wealth": "Mean",
+                  "Probability of loss": "Loss frequency"}
+        view = summary.rename(columns=labels)
+        formats = {labels.get(column, column): fmt for column, fmt in formats.items()}
+        st.dataframe(view.style.format(formats), width="stretch")
+        st.caption("Mean end wealth can exceed the median because a small number of strong outcomes pull it up. "
+                   "The 5th percentile is a downside scenario, not the maximum possible loss. "
+                   "Loss means ending below initial capital in nominal USD; inflation is excluded.")
+
+    st.subheader("How we get from history to scenarios")
+    cards([
+        ("Estimate", "Start with our backtest", "Measure each portfolio's average monthly net return and "
+         "monthly volatility over the same historical sample."),
+        ("Simulate", "Draw 10,000 possible futures", "Draw normal monthly returns with those fixed parameters. "
+         "Compound your capital month by month, following Lecture 5."),
+        ("Interpret", "Count outcomes, show the spread", "Sort final values to find the percentiles. "
+         "Count how many finish below your initial investment to estimate the chance of loss."),
+    ])
+    with st.expander("See the inputs, formulas and course connection"):
+        st.write(f"**Calibration:** {results.index[0]:%b %Y}–{results.index[-1]:%b %Y}, "
+                 f"{len(results)} common monthly observations. Manager changes in the sidebar "
+                 "rerun the backtest and update these inputs.")
+        st.dataframe(simulation["calibration"].style.format("{:.2%}"), width="stretch")
+        st.caption("Annualised mean = monthly arithmetic mean × 12; annualised volatility = monthly "
+                   "volatility × √12. The mean is not CAGR. Simulation uses monthly inputs directly.")
+        st.latex(r"r_{t,p} = \mu_{m,p} + \sigma_{m,p} z_{t,p},\qquad "
+                 r"W_{t,p} = W_{t-1,p}(1+r_{t,p})")
+        st.write("μ is the historical arithmetic monthly mean; σ is the sample monthly standard deviation "
+                 "(ddof = 1); z is a standard normal random shock. Months are independent.")
+        st.write(f"**Shared market shocks:** historical strategy–benchmark return correlation is "
+                 f"**{simulation['correlation']:.3f}**. For each month we draw independent standard normals "
+                 "z₁ and z₂. Strategy uses z₁; benchmark uses ρz₁ + √(1 − ρ²)z₂. "
+                 "This preserves their historical same-month correlation in the model. "
+                 "It does not model future ETF holdings.")
+        st.code('mu = monthly_net_returns.mean()\n'
+                'sigma = monthly_net_returns.std(ddof=1)\n'
+                '# For each simulated month and each portfolio:\n'
+                'monthly_return = mu + sigma * correlated_normal_shock\n'
+                'wealth = wealth * (1 + monthly_return)\n'
+                '# After the final month:\n'
+                'probability_of_loss = (final_wealth < initial_capital).mean()', language="python")
+        st.write("**Course connection:** Lecture 5 §5.3, retirement wealth paths and percentile bands; "
+                 "§5.5, monthly mean and volatility scaling. We replace regular contributions with one "
+                 "initial investment and estimate parameters from our portfolios. The paired shocks are "
+                 "an extension of the lecture's single-portfolio example.")
+        st.caption("Seed 2270 makes the random draws reproducible. Identical inputs give identical results. "
+                   "Costs are already reflected in historical net returns and are not subtracted again.")
+    html('<div class="mc-note"><strong>What this model can tell you</strong>'
+         '<p>These are scenarios under fixed historical assumptions, not forecasts. We simulate portfolio '
+         'returns; we do not rerun the trend filter, future ETF weights or trades. Normal returns can '
+         'understate extreme losses; independent months miss volatility clustering and changing regimes. '
+         'Historical estimates are uncertain. Inflation, taxes and additional management fees are excluded. '
+         'More simulated paths reduce sampling noise, not these modelling limits.</p></div>')
+
+    report = summary.join(simulation["calibration"])
+    report["Initial capital USD"] = capital
+    report["Horizon years"] = years
+    report["Paths"] = simulation["n_sim"]
+    report["Seed"] = simulation["seed"]
+    report["Historical correlation"] = simulation["correlation"]
+    report["Sample start"] = results.index[0].date().isoformat()
+    report["Sample end"] = results.index[-1].date().isoformat()
+    report["Return model"] = "Normal monthly net returns; independent months; fixed parameters"
+    report["Observations"] = len(results)
+    bands = pd.concat(simulation["bands"], names=["Portfolio", "Month"])
+    left, right = st.columns(2)
+    left.download_button("Download results and assumptions", report.to_csv().encode("utf-8"),
+                         file_name="monte_carlo_summary.csv", mime="text/csv")
+    right.download_button("Download monthly outcome bands", bands.to_csv().encode("utf-8"),
+                          file_name="monte_carlo_bands.csv", mime="text/csv")
+
+
 # --- trade history (logic in activity.py) ---------------------------------------
 def activity_table(data, columns, formats=None):
     """Readable labels for display; values stay numeric for export."""
@@ -719,6 +894,8 @@ def render_app(model):
         insights_page(model, params)
     elif page == "Crisis Analysis":
         crisis_page(model, params)
+    elif page == "Monte Carlo":
+        monte_carlo_page(model, params)
     elif page == "Trade History":
         trade_page(model, params)
     else:

@@ -145,6 +145,49 @@ class AppChecks(unittest.TestCase):
 
 
 class FundPagesChecks(unittest.TestCase):
+    def test_monte_carlo_inputs_navigation_and_shared_model(self):
+        import streamlit as st
+        st.cache_data.clear()
+        dates = pd.bdate_range(sg.DOWNLOAD_START, sg.BACKTEST_END)
+        rng = np.random.default_rng(2270)
+        raw = pd.DataFrame(100 * np.cumprod(1 + rng.normal(.0002, .008, (len(dates), 4)), axis=0),
+                           index=dates, columns=sg.ASSETS)
+        raw[sg.RF_TICKER] = 3.
+        with patch("yfinance.download", return_value=pd.concat({"Close": raw}, axis=1)):
+            prices, rf = sg.download_data()
+            app = AppTest.from_file(str(Path(__file__).resolve().parents[1] / "app.py"))
+            app.run(timeout=60)
+            app.button(key="enter_manager").click().run(timeout=60)
+            app.radio(key="portal_page").set_value("Monte Carlo").run(timeout=60)
+            self.assertEqual(len(app.exception), 0)
+            expected = sg.monte_carlo(sg.run_all(prices, rf)[0])
+            self.assertEqual(app.metric[0].value,
+                             f"${expected['summary'].loc['Strategy', 'Median end wealth']:,.0f}")
+            self.assertEqual(app.metric[2].value,
+                             f"{expected['summary'].loc['Strategy', 'Probability of loss']:.2%}")
+            app.number_input(key="mc_capital").set_value(200_000.).run(timeout=60)
+            expected = sg.monte_carlo(sg.run_all(prices, rf)[0], initial=200_000.)
+            self.assertEqual(app.metric[0].value,
+                             f"${expected['summary'].loc['Strategy', 'Median end wealth']:,.0f}")
+            app.slider(key="mc_years").set_value(1).run(timeout=60)
+            app.radio(key="mc_portfolio").set_value(sg.BENCHMARK).run(timeout=60)
+            self.assertEqual(len(app.exception), 0)
+            self.assertTrue(any("after 1 year," in item.value for item in app.markdown))
+            app.sidebar.slider[1].set_value(1.).run(timeout=60)
+            self.assertEqual(len(app.exception), 0)
+            expected = sg.monte_carlo(sg.run_all(prices, rf, core_weight=1.)[0], initial=200_000., years=1)
+            self.assertEqual(app.metric[0].value,
+                             f"${expected['summary'].loc['Strategy', 'Median end wealth']:,.0f}")
+            app.slider(key="mc_years").set_value(30).run(timeout=60)
+            self.assertEqual(len(app.exception), 0)
+            app.radio(key="portal_page").set_value("Overview").run(timeout=60)
+            self.assertEqual(app.number_input(key="overview_capital").value, 200_000.)
+        st.cache_data.clear()
+        with patch("yfinance.download", side_effect=ValueError("Offline")):
+            app.radio(key="portal_page").set_value("Monte Carlo").run(timeout=60)
+            self.assertEqual(len(app.exception), 0)
+            self.assertIn("Offline", app.error[0].value)
+
     def test_new_pages_controls_and_capital_match_the_existing_backtest(self):
         import streamlit as st
         from fund_analytics import CRISES, crisis_summary
